@@ -1,12 +1,12 @@
 const CONFIG = {
   // URL base del Worker que guarda la clave de la NASA (secreto NASA_API_KEY), sin barra final.
   // Ejemplo: 'https://nasa-cosmos-proxy.TU-USUARIO.workers.dev'. Vacío = clave DEMO_KEY (límite bajo).
-  nasaProxy: '',
+  nasaProxy: '/api',
   timeoutMs: 10000,
   // El Archivo de Exoplanetas (TAP) hoy no envía cabeceras CORS, así que el navegador bloquea
   // la consulta directa. Si tienes un proxy propio, pon aquí su prefijo (se le agrega la URL
   // codificada), por ejemplo 'https://mi-proxy.example/?url='. Vacío = consulta directa.
-  exoplanetProxy: '',
+  exoplanetProxy: '/api/exo?url=',
   intervals: {
     iss: 5 * 1000,
     space: 5 * 60 * 1000,
