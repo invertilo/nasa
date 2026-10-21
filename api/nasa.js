@@ -1,12 +1,11 @@
 // Función de Vercel: reenvía a api.nasa.gov agregando la clave guardada en la variable
 // de entorno NASA_API_KEY (Project Settings → Environment Variables). La clave nunca llega al navegador.
-// Se llama como /api/nasa/planetary/apod?... (el nombre [...path] captura la ruta de la NASA).
+// Se llama como /api/nasa?path=planetary/apod&... (path indica la ruta de la NASA).
 
 const ALLOWED = new Set(['planetary/apod', 'neo/rest/v1/feed']);
 
 module.exports = async function handler(req, res){
-  const parts = Array.isArray(req.query.path) ? req.query.path : [req.query.path];
-  const route = parts.join('/');
+  const route = String(req.query.path || '');
   if (!ALLOWED.has(route)) return res.status(403).send('Ruta no permitida');
 
   const key = process.env.NASA_API_KEY;

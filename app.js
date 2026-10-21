@@ -30,10 +30,10 @@ const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 /* ---------- Utilidades ---------- */
 
-// La clave nunca va en el navegador: con proxy la agrega el Worker; sin proxy se usa DEMO_KEY.
+// La clave nunca va en el navegador: con proxy la agrega la función de /api; sin proxy se usa DEMO_KEY.
 function nasaUrl(path, params = {}){
   const qs = new URLSearchParams(params);
-  if (CONFIG.nasaProxy) return `${CONFIG.nasaProxy}/nasa/${path}?${qs}`;
+  if (CONFIG.nasaProxy) return `${CONFIG.nasaProxy}/nasa?path=${encodeURIComponent(path)}&${qs}`;
   qs.set('api_key', 'DEMO_KEY');
   return `https://api.nasa.gov/${path}?${qs}`;
 }
