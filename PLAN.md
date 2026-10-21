@@ -81,3 +81,11 @@ desde cdnjs.
 - No se probó en Safari/iOS ni en Firefox, ni en un teléfono real; tampoco se midió el rendimiento
   en GPUs integradas lentas (hay resolución dinámica en el agujero negro).
 - Las posiciones entre galaxias y las superficies de las exotierras son ilustrativas.
+
+## Proxy del Archivo de Exoplanetas (pendiente de despliegue)
+- `worker/exoplanet-proxy.js`: Worker de Cloudflare que reenvía solo consultas TAP a
+  `exoplanetarchive.ipac.caltech.edu/TAP/sync` y agrega CORS. Probado en Node: destinos ajenos
+  responden 403; consultas válidas responden 200 con `Access-Control-Allow-Origin`.
+- Despliegue (requiere tu cuenta de Cloudflare): `wrangler deploy`, con la variable
+  `ALLOWED_ORIGIN=https://invertilo.github.io`.
+- Después, en `app.js`: `CONFIG.exoplanetProxy = 'https://TU-WORKER.workers.dev/?url='`.
