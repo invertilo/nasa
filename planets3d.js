@@ -126,21 +126,28 @@ void main(){
     alb *= 0.92 + 0.08 * sin(abs(lat) * 12.0 + dlon(n, 0.0) * 2.0 + t * 4.0);
   } else if (uType < 2.5){
     // Tierra
-    float c = continents(n);
-    float land = smoothstep(uOcean, uOcean + 0.03, c);
+    float c = continents(n) + (fbm3(n * 16.0 + uSeed) - 0.5) * 0.07;
+    float land = smoothstep(uOcean, uOcean + 0.012, c);
     float depth = smoothstep(uOcean, uOcean - 0.2, c);
-    vec3 ocean = mix(vec3(0.07, 0.25, 0.42), vec3(0.02, 0.07, 0.2), depth);
+    // Aguas someras cerca de la costa (turquesa) y océano profundo (azul oscuro)
+    float shallow = smoothstep(uOcean - 0.07, uOcean, c);
+    vec3 ocean = mix(vec3(0.12, 0.42, 0.5), vec3(0.03, 0.12, 0.3), depth);
+    ocean = mix(ocean, vec3(0.1, 0.36, 0.44), shallow * (1.0 - depth) * 0.6);
     float moist = fbm3(n * 3.0 + 11.0 + uSeed);
     float alat = abs(lat);
     float desert = smoothstep(0.42, 0.62, 1.0 - moist) * smoothstep(0.1, 0.25, alat) * (1.0 - smoothstep(0.42, 0.55, alat));
-    vec3 green = mix(uLand, uLand * vec3(1.6, 1.25, 1.3) + 0.04, fbm3(n * 7.0 + uSeed));
+    // Variedad de suelo: bosques, pastos y zonas secas con grano fino
+    vec3 green = mix(uLand * 0.7, uLand * vec3(1.5, 1.2, 1.1) + 0.03, fbm3(n * 7.0 + uSeed));
+    green = mix(green, green * 1.25, smoothstep(0.5, 0.7, fbm3(n * 30.0 + uSeed)) * 0.5);
     vec3 ground = mix(green, vec3(0.76, 0.63, 0.42), desert);
     ground = mix(ground, vec3(0.42, 0.38, 0.33), smoothstep(0.35, 0.6, h0));
     alb = mix(ocean, ground, land);
     float ice = smoothstep(uIce - 0.02, uIce + 0.04, alat + (fbm3(n * 6.0 + uSeed) - 0.5) * 0.12);
     alb = mix(alb, vec3(0.93, 0.95, 1.0), ice);
-    spec = (1.0 - land) * (1.0 - ice);
-    cloud = smoothstep(uCloud, uCloud + 0.26, fbm5(n * 2.6 + vec3(uTime * 0.012, uSeed, uTime * 0.006)));
+    spec = (1.0 - land) * (1.0 - ice) * 0.5;
+    // Nubes: capas fibrosas con borde definido, no manchas difusas
+    float cw = fbm5(n * 4.2 + vec3(uTime * 0.012, uSeed, uTime * 0.006));
+    cloud = smoothstep(uCloud, uCloud + 0.12, cw) * 0.9;
     // Luces de ciudades en el lado nocturno
     float city = smoothstep(0.62, 0.82, fbm3(n * 45.0)) * land * (1.0 - ice) * (1.0 - desert * 0.7);
     emit = vec3(1.0, 0.62, 0.25) * city * 0.9;

@@ -33,10 +33,12 @@ void main(){
   float t = uTime * 0.06;
 
   // Granulación: ruido "con crestas" invertido → celdas claras separadas por líneas oscuras
-  vec3 q = n * uGran + vec3(uSeed);
+  vec3 q = n * uGran * 0.4 + vec3(uSeed);
   float g1 = 1.0 - abs(vnoise(q + vec3(t, 0.0, -t)) * 2.0 - 1.0);
   float g2 = 1.0 - abs(vnoise(q * 2.1 + vec3(-t, t, 0.0)) * 2.0 - 1.0);
-  float gran = 0.74 + 0.26 * (g1 * 0.65 + g2 * 0.35);
+  // Celdas brillantes con líneas oscuras bien marcadas (contraste de granulación solar real)
+  float cell = g1 * 0.6 + g2 * 0.4;
+  float gran = mix(0.8, 1.0, smoothstep(0.3, 0.85, cell));
   float super_ = fbm3(n * 5.0 + vec3(uSeed) + t * 0.2);
   gran *= 0.94 + 0.12 * super_;
 
@@ -112,7 +114,8 @@ function startStars3D(stage, labelsEl){
     const tex = glowTexture([[0, 'rgba(255,255,255,1)'], [0.46, 'rgba(255,255,255,0.95)'], [0.5, 'rgba(255,255,255,0.5)'], [0.58, 'rgba(255,255,255,0.2)'], [0.75, 'rgba(255,255,255,0.06)'], [1, 'rgba(255,255,255,0)']]);
     const sm = new T.SpriteMaterial({ map: tex, blending: T.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.7 });
     const halo = new T.Sprite(sm);
-    halo.scale.setScalar(4.2);
+    halo.scale.setScalar(3.3);
+    halo.material.opacity = 0.55;
     holder.add(halo);
     disposables.push(mat, tex, sm);
     scene.add(holder);
