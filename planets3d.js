@@ -146,8 +146,12 @@ void main(){
     alb = mix(alb, vec3(0.93, 0.95, 1.0), ice);
     spec = (1.0 - land) * (1.0 - ice) * 0.5;
     // Nubes: capas fibrosas con borde definido, no manchas difusas
-    float cw = fbm5(n * 4.2 + vec3(uTime * 0.012, uSeed, uTime * 0.006));
-    cloud = smoothstep(uCloud, uCloud + 0.12, cw) * 0.9;
+    // Sistemas nubosos deformados (domain warp) más detalle fino en los bordes
+    vec3 cp = n * 4.2 + vec3(uTime * 0.012, uSeed, uTime * 0.006);
+    vec3 warp = vec3(fbm3(cp * 1.3), fbm3(cp * 1.3 + 7.1), fbm3(cp * 1.3 + 3.7));
+    float cw = fbm5(cp + (warp - 0.5) * 1.1);
+    float cfine = fbm3(n * 22.0 + uSeed + uTime * 0.02);
+    cloud = smoothstep(uCloud, uCloud + 0.09, cw + (cfine - 0.5) * 0.12) * 0.88;
     // Luces de ciudades en el lado nocturno
     float city = smoothstep(0.62, 0.82, fbm3(n * 45.0)) * land * (1.0 - ice) * (1.0 - desert * 0.7);
     emit = vec3(1.0, 0.62, 0.25) * city * 0.9;
@@ -227,6 +231,10 @@ void main(){
   // Borde atmosférico iluminado
   float fres = pow(1.0 - mu, 3.0);
   col += toLin(uAtmo) * fres * uAtmoK * smoothstep(-0.25, 0.45, nlGeo) * 1.2;
+
+  // Crepúsculo: banda cálida en el terminador, donde la luz atraviesa la atmósfera
+  float twi = exp(-pow((nlGeo + 0.02) * 14.0, 2.0));
+  col += toLin(vec3(1.0, 0.55, 0.3)) * twi * uAtmoK * 0.09;
 
   col = 1.0 - exp(-col * 1.15);
   gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
