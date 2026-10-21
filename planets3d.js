@@ -65,6 +65,15 @@ float craters(vec3 p){
 
 float continents(vec3 p){ return fbm5(p * 1.7 + vec3(3.1, 1.7, 0.4) + uSeed); }
 
+// Densidad de nubes en un punto de la esfera (0..1). Se usa también para la sombra.
+float cloudDensity(vec3 p){
+  vec3 cp = p * 4.2 + vec3(uTime * 0.012, uSeed, uTime * 0.006);
+  vec3 warp = vec3(fbm3(cp * 1.3), fbm3(cp * 1.3 + 7.1), fbm3(cp * 1.3 + 3.7));
+  float cw = fbm5(cp + (warp - 0.5) * 1.1);
+  float cf = fbm3(p * 22.0 + uSeed + uTime * 0.02);
+  return smoothstep(uCloud, uCloud + 0.09, cw + (cf - 0.5) * 0.12);
+}
+
 // Mapa de alturas (solo planetas rocosos)
 float height(vec3 p){
   if (uType < 0.5) return fbm5(p * 3.0) * 0.6 + craters(p * 5.0) * 0.5 + craters(p * 11.0) * 0.22;
@@ -98,6 +107,7 @@ void main(){
   vec3 alb = vec3(0.5);
   float spec = 0.0;
   float cloud = 0.0;
+  float shadow = 0.0;
   vec3 emit = vec3(0.0);
   float limbDark = 0.0;
 
@@ -146,12 +156,9 @@ void main(){
     alb = mix(alb, vec3(0.93, 0.95, 1.0), ice);
     spec = (1.0 - land) * (1.0 - ice) * 0.5;
     // Nubes: capas fibrosas con borde definido, no manchas difusas
-    // Sistemas nubosos deformados (domain warp) más detalle fino en los bordes
-    vec3 cp = n * 4.2 + vec3(uTime * 0.012, uSeed, uTime * 0.006);
-    vec3 warp = vec3(fbm3(cp * 1.3), fbm3(cp * 1.3 + 7.1), fbm3(cp * 1.3 + 3.7));
-    float cw = fbm5(cp + (warp - 0.5) * 1.1);
-    float cfine = fbm3(n * 22.0 + uSeed + uTime * 0.02);
-    cloud = smoothstep(uCloud, uCloud + 0.09, cw + (cfine - 0.5) * 0.12) * 0.88;
+    // Sistemas nubosos deformados; la sombra es la nube desplazada hacia el Sol
+    cloud = cloudDensity(n) * 0.88;
+    shadow = cloudDensity(normalize(n + L * 0.035)) * 0.88;
     // Luces de ciudades en el lado nocturno
     float city = smoothstep(0.62, 0.82, fbm3(n * 45.0)) * land * (1.0 - ice) * (1.0 - desert * 0.7);
     emit = vec3(1.0, 0.62, 0.25) * city * 0.9;
@@ -168,15 +175,20 @@ void main(){
     float flow = uTime * 0.02 * sin(lat * 9.0);
     vec3 q = vec3(n.x * 3.0, n.y * 15.0, n.z * 3.0);
     float turb = fbm5(q + vec3(flow, 0.0, -flow));
-    float bands = sin(lat * (jup ? 22.0 : 17.0) + turb * (jup ? 3.6 : 1.8));
+    // Bordes de banda turbulentos: detalle fino que rompe las franjas rectas
+    float edge = fbm5(vec3(n.x * 8.0, n.y * 40.0, n.z * 8.0) + vec3(flow, 0.0, 0.0));
+    float bands = sin(lat * (jup ? 22.0 : 17.0) + turb * (jup ? 3.6 : 1.8) + edge * (jup ? 2.2 : 1.0));
     vec3 belt = jup ? vec3(0.62, 0.43, 0.3) : vec3(0.8, 0.68, 0.48);
     vec3 zone = jup ? vec3(0.94, 0.89, 0.78) : vec3(0.95, 0.88, 0.7);
     alb = mix(belt, zone, smoothstep(-0.7, 0.8, bands) * 0.85 + 0.15 * turb);
     alb *= 0.88 + 0.22 * fbm3(vec3(n.x * 6.0, n.y * 34.0, n.z * 6.0));
     if (jup){
+      // Gran Mancha Roja: óvalo con borde difuso, remolinos internos y borde más oscuro
       float grs = storm(n, -0.39, 1.0 + uTime * 0.004, 0.21, 0.1);
-      float swirl = fbm3(n * 18.0);
-      alb = mix(alb, mix(vec3(0.78, 0.33, 0.2), vec3(0.88, 0.55, 0.38), swirl), grs);
+      float swirl = fbm3(n * 18.0 + vec3(uTime * 0.03, 0.0, 0.0));
+      float rim = clamp(grs * (1.0 - grs) * 4.0, 0.0, 1.0);
+      vec3 stormCol = mix(vec3(0.7, 0.28, 0.16), vec3(0.9, 0.56, 0.4), swirl) * (1.0 - 0.3 * rim);
+      alb = mix(alb, stormCol, grs * (0.75 + 0.25 * swirl));
       alb = mix(alb, vec3(0.97, 0.95, 0.9), storm(n, -0.6, 2.6, 0.06, 0.035) * 0.8);
     }
     alb *= mix(1.0, 0.72, smoothstep(0.72, 0.95, abs(lat)));
@@ -200,7 +212,7 @@ void main(){
   float terminator = smoothstep(-0.06, 0.12, nlGeo);
   float diff = max(dot(N, L), 0.0) * terminator;
   vec3 a = toLin(alb);
-  vec3 col = a * diff * 2.3 * uLight + a * 0.012;
+  vec3 col = a * diff * 2.3 * uLight * (1.0 - 0.55 * shadow) + a * 0.012;
 
   // Sombra de los anillos sobre Saturno
   if (uType > 4.5 && uType < 5.5 && abs(L.y) > 0.001){
@@ -224,7 +236,9 @@ void main(){
   }
   if (spec > 0.0){
     vec3 R = reflect(-L, N);
-    col += vec3(1.0, 0.92, 0.8) * pow(max(dot(R, V), 0.0), 60.0) * spec * 1.4 * terminator;
+    float rv = max(dot(R, V), 0.0);
+    float sparkle = 0.5 + 0.5 * fbm3(n * 60.0 + uSeed);
+    col += vec3(1.0, 0.92, 0.8) * (pow(rv, 90.0) * sparkle * 1.8 + pow(rv, 10.0) * 0.06) * spec * terminator;
   }
   col += toLin(emit) * smoothstep(0.08, -0.2, nlGeo);
 
