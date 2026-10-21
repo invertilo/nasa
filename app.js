@@ -1,6 +1,10 @@
 const CONFIG = {
   nasaKey: 'DEMO_KEY', // Reemplázala por tu clave de https://api.nasa.gov
   timeoutMs: 10000,
+  // El Archivo de Exoplanetas (TAP) hoy no envía cabeceras CORS, así que el navegador bloquea
+  // la consulta directa. Si tienes un proxy propio, pon aquí su prefijo (se le agrega la URL
+  // codificada), por ejemplo 'https://mi-proxy.example/?url='. Vacío = consulta directa.
+  exoplanetProxy: '',
   intervals: {
     iss: 5 * 1000,
     space: 5 * 60 * 1000,
@@ -16,9 +20,11 @@ const KB = 1.381e-23;         // J/K
 const SUN_RADIUS_KM = 696000;
 const AU_KM = 1.496e8;
 const LY_PER_PC = 3.2616;
+const EARTH_RADIUS_KM = 6371;
 
 const $ = (id) => document.getElementById(id);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 /* ---------- Utilidades ---------- */
 
@@ -61,16 +67,20 @@ function updateSummary(){
   $('sum-kp').textContent = $('kp').textContent;
   $('sum-xray').textContent = $('xray').textContent;
   $('sum-neo').textContent = $('neo-count').textContent;
-  $('sum-disc').textContent = String(document.querySelectorAll('.disc').length);
+  const n = document.querySelectorAll('.disc').length;
+  $('sum-disc').textContent = n ? String(n) : '—';
 }
 
 const num = (n, digits = 0) => Number(n).toLocaleString('es', { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
 function bigNum(n, unit = ''){
   const abs = Math.abs(n);
-  if (abs >= 1e9) return `${num(n / 1e9, 2)} mil millones${unit ? ' ' + unit : ''}`;
-  if (abs >= 1e6) return `${num(n / 1e6, 2)} millones${unit ? ' ' + unit : ''}`;
-  return `${num(n)}${unit ? ' ' + unit : ''}`;
+  const u = unit ? ' ' + unit : '';
+  if (abs >= 1e12) return `${num(n / 1e12, 2)} billones${u}`;
+  if (abs >= 1e9) return `${num(n / 1e9, 2)} mil millones${u}`;
+  if (abs >= 1e6) return `${num(n / 1e6, 2)} millones${u}`;
+  if (abs > 0 && abs < 1) return `${num(n, 4)}${u}`;
+  return `${num(n)}${u}`;
 }
 
 function store(key, value){
@@ -112,7 +122,143 @@ function initNotifyButton(){
   });
 }
 
+/* ---------- Controles segmentados (pulgar de vidrio con resorte) ---------- */
+
+function syncSeg(seg){
+  let thumb = seg.querySelector('.seg-thumb');
+  if (!thumb){
+    thumb = document.createElement('span');
+    thumb.className = 'seg-thumb';
+    thumb.setAttribute('aria-hidden', 'true');
+    seg.prepend(thumb);
+    if ('ResizeObserver' in window) new ResizeObserver(() => syncSeg(seg)).observe(seg);
+  }
+  const on = seg.querySelector('button[aria-pressed="true"]');
+  if (!on){ thumb.style.opacity = '0'; return; }
+  thumb.style.opacity = '1';
+  thumb.style.width = `${on.offsetWidth}px`;
+  thumb.style.height = `${on.offsetHeight}px`;
+  thumb.style.transform = `translate(${on.offsetLeft}px, ${on.offsetTop}px)`;
+}
+
+function setPressed(seg, attr, value){
+  seg.querySelectorAll(`[${attr}]`).forEach((b) => b.setAttribute('aria-pressed', String(b.getAttribute(attr) === value)));
+  syncSeg(seg);
+}
+
+/* ---------- Detalles táctiles: presión inmediata e inclinación 3D ---------- */
+
+function initPressFeedback(){
+  // Respuesta en pointer-down, no al soltar (también en táctil, donde :active llega tarde)
+  document.addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('button');
+    if (b) b.classList.add('is-pressed');
+  }, { passive: true });
+  const release = () => document.querySelectorAll('button.is-pressed').forEach((b) => b.classList.remove('is-pressed'));
+  ['pointerup', 'pointercancel', 'dragstart'].forEach((t) => document.addEventListener(t, release, { passive: true }));
+}
+
+function initTilt(){
+  if (!finePointer || reduceMotion) return;
+  // Inclinación limitada a 5° y reflejo que sigue al puntero. Se calcula en cada evento,
+  // así que se puede interrumpir y revertir en cualquier momento.
+  document.addEventListener('pointermove', (e) => {
+    const card = e.target.closest('.tilt');
+    document.querySelectorAll('.tilt.is-tilting').forEach((c) => {
+      if (c !== card){ c.classList.remove('is-tilting'); c.style.transform = ''; }
+    });
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    card.classList.add('is-tilting');
+    card.style.transform = `perspective(900px) rotateX(${((0.5 - y) * 5).toFixed(2)}deg) rotateY(${((x - 0.5) * 5).toFixed(2)}deg) translateZ(0)`;
+    card.style.setProperty('--mx', `${(x * 100).toFixed(1)}%`);
+    card.style.setProperty('--my', `${(y * 100).toFixed(1)}%`);
+  }, { passive: true });
+  document.addEventListener('pointerleave', () => {
+    document.querySelectorAll('.tilt.is-tilting').forEach((c) => { c.classList.remove('is-tilting'); c.style.transform = ''; });
+  });
+}
+
 /* ---------- ISS ---------- */
+
+// Globo ortográfico en canvas 2D: no gasta un contexto WebGL más.
+const issTrail = [];
+const issView = { lon: 0, lat: 0, tLon: 0, tLat: 0, raf: 0 };
+
+function drawISSGlobe(){
+  const cv = $('iss-globe');
+  const g = cv.getContext('2d');
+  const W = cv.width, R = W / 2 - 4, cx = W / 2, cy = W / 2;
+  const rad = Math.PI / 180;
+  const lon0 = issView.lon * rad, lat0 = issView.lat * rad;
+  const proj = (lat, lon) => {
+    const la = lat * rad, lo = lon * rad;
+    const cosc = Math.sin(lat0) * Math.sin(la) + Math.cos(lat0) * Math.cos(la) * Math.cos(lo - lon0);
+    return {
+      x: cx + R * Math.cos(la) * Math.sin(lo - lon0),
+      y: cy - R * (Math.cos(lat0) * Math.sin(la) - Math.sin(lat0) * Math.cos(la) * Math.cos(lo - lon0)),
+      v: cosc > 0,
+    };
+  };
+  g.clearRect(0, 0, W, W);
+  const sph = g.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.1, cx, cy, R);
+  sph.addColorStop(0, '#3d7bd9'); sph.addColorStop(0.6, '#13336e'); sph.addColorStop(1, '#050d24');
+  g.fillStyle = sph;
+  g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+  // Meridianos y paralelos
+  g.strokeStyle = 'rgba(170,200,255,.22)';
+  g.lineWidth = 1;
+  const line = (pts) => {
+    g.beginPath();
+    let pen = false;
+    pts.forEach(([la, lo]) => {
+      const p = proj(la, lo);
+      if (!p.v){ pen = false; return; }
+      if (pen) g.lineTo(p.x, p.y); else { g.moveTo(p.x, p.y); pen = true; }
+    });
+    g.stroke();
+  };
+  for (let lo = -180; lo < 180; lo += 30) line(Array.from({ length: 37 }, (_, i) => [-90 + i * 5, lo]));
+  for (let la = -60; la <= 60; la += 30) line(Array.from({ length: 73 }, (_, i) => [la, -180 + i * 5]));
+  // Estela y posición de la ISS
+  g.strokeStyle = 'rgba(255,210,154,.7)';
+  g.lineWidth = 2;
+  line(issTrail);
+  const last = issTrail[issTrail.length - 1];
+  if (last){
+    const p = proj(last[0], last[1]);
+    if (p.v){
+      g.fillStyle = 'rgba(255,210,154,.3)';
+      g.beginPath(); g.arc(p.x, p.y, 9, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#ffd29a';
+      g.beginPath(); g.arc(p.x, p.y, 4, 0, Math.PI * 2); g.fill();
+    }
+  }
+  // Brillo atmosférico
+  g.strokeStyle = 'rgba(140,180,255,.5)';
+  g.lineWidth = 2;
+  g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
+}
+
+function animateISSGlobe(){
+  cancelAnimationFrame(issView.raf);
+  // Gira el globo hacia la ISS con un resorte críticamente amortiguado (sin sobreimpulso)
+  const s1 = { x: issView.lon, v: 0, target: issView.tLon };
+  const s2 = { x: issView.lat, v: 0, target: issView.tLat };
+  let last = performance.now();
+  const step = (t) => {
+    const dt = Math.min((t - last) / 1000, 0.05);
+    last = t;
+    springTo(s1, dt, 0.8);
+    springTo(s2, dt, 0.8);
+    issView.lon = s1.x; issView.lat = s2.x;
+    drawISSGlobe();
+    if (Math.abs(s1.target - s1.x) > 0.01 || Math.abs(s2.target - s2.x) > 0.01) issView.raf = requestAnimationFrame(step);
+  };
+  if (reduceMotion){ issView.lon = issView.tLon; issView.lat = issView.tLat; drawISSGlobe(); }
+  else issView.raf = requestAnimationFrame(step);
+}
 
 async function loadISS(){
   try{
@@ -123,6 +269,15 @@ async function loadISS(){
     $('iss-lon').textContent = `${num(Math.abs(lon), 2)}° ${lon >= 0 ? 'E' : 'O'}`;
     $('iss-vel').textContent = `${num(d.velocity)} km/h`;
     $('iss-vis').textContent = d.visibility === 'daylight' ? 'Con luz solar' : 'En sombra de la Tierra';
+    issTrail.push([lat, lon]);
+    if (issTrail.length > 120) issTrail.shift();
+    // Elegir el camino corto en longitud para que el globo no dé la vuelta entera
+    let tl = lon;
+    while (tl - issView.lon > 180) tl -= 360;
+    while (tl - issView.lon < -180) tl += 360;
+    issView.tLon = tl;
+    issView.tLat = lat * 0.6;
+    animateISSGlobe();
     setState('iss-status', `actualizado ${stamp()}`, 'ok');
     touchLast();
   }catch(e){
@@ -223,11 +378,50 @@ async function loadAlerts(){
 
 /* ---------- Nuevos descubrimientos (NASA Exoplanet Archive) ---------- */
 
+function tapURL(query){
+  const url = 'https://exoplanetarchive.ipac.caltech.edu/TAP/sync?' + new URLSearchParams({ query, format: 'json' });
+  return CONFIG.exoplanetProxy ? CONFIG.exoplanetProxy + encodeURIComponent(url) : url;
+}
+
+// ¿El fallo es el bloqueo CORS del Archivo (y no hay proxy configurado)?
+const isCorsBlock = (e) => e instanceof TypeError && !CONFIG.exoplanetProxy;
+
+// Esferas a escala lineal (Tierra = 12 px). Si el planeta no cabe, se marca.
+function sizeCompare(rade){
+  if (rade == null) return '';
+  const E = 12, max = 74;
+  const px = E * rade;
+  const capped = px > max;
+  const size = Math.max(3, Math.min(px, max));
+  const hot = rade > 6 ? '--c1:#fff3e0;--c2:#d9a066;--c3:#4a2a12' : rade > 2 ? '--c1:#e9f6ff;--c2:#7fb6e6;--c3:#1c3b66' : '--c1:#ffe9d6;--c2:#c98f6b;--c3:#40261a';
+  return `<div class="size-cmp" aria-hidden="true">
+    <figure><i class="orb earth" style="width:${E}px;height:${E}px"></i><figcaption>Tierra</figcaption></figure>
+    <figure><i class="orb" style="width:${size}px;height:${size}px;${hot}"></i><figcaption>${capped ? 'no cabe a escala' : 'a escala'}</figcaption></figure>
+  </div>`;
+}
+
+// Sin proxy, el navegador bloquea la consulta: se explica con calma (sin error rojo)
+function discoveriesFailed(e){
+  if (document.querySelector('.disc')){
+    setState('disc-status', `No se pudo actualizar (${e.message}); se muestran los últimos datos.`, 'info');
+    return;
+  }
+  const cors = isCorsBlock(e);
+  $('discoveries').innerHTML = `<div class="card glass info-card">
+    <p><strong>${cors ? 'Los descubrimientos en vivo necesitan un proxy.' : 'No se pudieron cargar los descubrimientos.'}</strong></p>
+    <p class="muted">${cors
+      ? 'El Archivo de Exoplanetas de la NASA no permite consultas directas desde una página web (no envía cabeceras CORS). Para activarlo, configura <code>CONFIG.exoplanetProxy</code> en <code>app.js</code> con tu propio proxy.'
+      : esc(e.message)}</p>
+    <p><a href="https://exoplanetarchive.ipac.caltech.edu/" target="_blank" rel="noopener">Ver los descubrimientos en el Archivo de Exoplanetas</a> · o explora los <a href="#planetas">exoplanetas tipo Tierra en 3D</a>.</p>
+  </div>`;
+  setState('disc-status', cors ? 'Datos en vivo desactivados hasta configurar el proxy.' : `No disponible (${e.message})`, cors ? 'info' : 'err');
+  updateSummary();
+}
+
 async function loadDiscoveries(){
   const year = new Date().getFullYear();
   const query = `select top 8 pl_name,hostname,disc_year,disc_facility,pl_rade,pl_orbper,sy_dist from pscomppars where disc_year >= ${year - 2} order by disc_year desc`;
-  const url = 'https://exoplanetarchive.ipac.caltech.edu/TAP/sync?' + new URLSearchParams({ query, format: 'json' });
-  const rows = await fetchJSON(url);
+  const rows = await fetchJSON(tapURL(query));
 
   const seen = load('seenPlanets');
   const names = rows.map((r) => r.pl_name);
@@ -238,10 +432,11 @@ async function loadDiscoveries(){
     const radius = r.pl_rade != null ? `${num(r.pl_rade, 2)} R⊕` : '—';
     const period = r.pl_orbper != null ? `${num(r.pl_orbper, 1)} días` : '—';
     const dist = r.sy_dist != null ? `${num(r.sy_dist * LY_PER_PC)} años luz` : '—';
-    return `<article class="disc card${isNew ? ' is-new' : ''}" style="--i:${i}">
+    return `<article class="disc card glass tilt${isNew ? ' is-new' : ''}" style="--i:${i}">
       ${isNew ? '<span class="badge">Nuevo</span>' : ''}
       <h3>${esc(r.pl_name)}</h3>
       <p class="muted">Estrella: ${esc(r.hostname)}</p>
+      ${sizeCompare(r.pl_rade)}
       <div class="row"><span>Descubierto</span><span>${esc(r.disc_year)}</span></div>
       <div class="row"><span>Telescopio</span><span>${esc(r.disc_facility)}</span></div>
       <div class="row"><span>Radio</span><span>${radius}</span></div>
@@ -351,7 +546,33 @@ function bhPhysics(massSun){
   };
 }
 
+// Referencias para la regla logarítmica (diámetros en km)
+const SIZE_REFS = [
+  { name: 'Tierra', km: 12742 },
+  { name: 'Júpiter', km: 139820 },
+  { name: 'Sol', km: 1.3927e6 },
+  { name: 'Órbita de Mercurio', km: 1.16e8 },
+  { name: 'Órbita de la Tierra', km: 2.992e8 },
+  { name: 'Órbita de Neptuno', km: 9.0e9 },
+  { name: 'Heliosfera', km: 3.6e10 },
+];
+const RULER_MIN = 3, RULER_MAX = 11;   // log10(km)
+const rulerPct = (km) => Math.max(0, Math.min(100, (Math.log10(km) - RULER_MIN) / (RULER_MAX - RULER_MIN) * 100));
+
+function initRuler(){
+  const ruler = $('bh-ruler');
+  SIZE_REFS.forEach((r, i) => {
+    const t = document.createElement('div');
+    const pct = rulerPct(r.km);
+    t.className = `ruler-tick ${['up', 'down', 'up2', 'down2'][i % 4]}${pct < 8 ? ' start' : pct > 80 ? ' end' : ''}`;
+    t.style.left = `${pct}%`;
+    t.innerHTML = `<span>${esc(r.name)}</span>`;
+    ruler.insertBefore(t, $('bh-mark'));
+  });
+}
+
 let bhCurrent = BLACK_HOLES[0];
+let bh3d = null;
 
 function renderBlackHole(){
   const bh = bhCurrent;
@@ -367,19 +588,20 @@ function renderBlackHole(){
   $('bh-dist').textContent = `${bigNum(bh.distanceLy)} años luz`;
   $('bh-rs').textContent = bigNum(p.rsKm, 'km');
   $('bh-diam').textContent = bigNum(p.diamKm, 'km');
-  $('bh-sun').textContent = `${num(p.diamKm / SUN_RADIUS_KM, 1)} veces el radio del Sol`;
-  $('bh-au').textContent = `${num((p.rsKm / AU_KM) * 100, 3)} % de la distancia Tierra–Sol`;
+  $('bh-sun').textContent = `${num(p.diamKm / (2 * SUN_RADIUS_KM), p.diamKm < 2 * SUN_RADIUS_KM ? 5 : 1)} veces el diámetro del Sol`;
+  const pct = (p.rsKm / AU_KM) * 100;
+  $('bh-au').textContent = pct < 0.001
+    ? `${pct.toExponential(1).replace('e', ' × 10^')} % de la distancia Tierra–Sol`
+    : `${num(pct, 3)} % de la distancia Tierra–Sol`;
+  const fits = SIZE_REFS.find((r) => r.km >= p.diamKm);
+  $('bh-fits').textContent = fits ? `${fits.name} (${bigNum(fits.km, 'km')})` : 'Más grande que la heliosfera';
+  $('bh-disk-temp').textContent = `~${bhDiskTempK(massSun).toExponential(1).replace('e+', ' × 10^')} K`;
   $('bh-temp').textContent = `${p.tempK.toExponential(2)} K`;
   $('bh-cmb').textContent = p.tempK < 2.7 ? 'Más frío que el fondo cósmico (2,7 K)' : 'Más caliente que el fondo cósmico (2,7 K)';
+  $('bh-mark').style.left = `${rulerPct(p.diamKm)}%`;
 
-  // Escala logarítmica: el horizonte crece con la masa, sin salirse del recuadro
-  const px = Math.max(18, Math.min(130, 18 + (Math.log10(p.diamKm) - 2) * 11));
-  $('bh-hole').style.width = $('bh-hole').style.height = `${px}px`;
-  $('bh-disk').style.width = $('bh-disk').style.height = `${px * 2.6}px`;
-
-  document.querySelectorAll('[data-bh]').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.bh === bh.id));
-  });
+  setPressed($('bh-picker'), 'data-bh', bh.id);
+  if (bh3d) bh3d.setMass(massSun);
 }
 
 function initBlackHoles(){
@@ -398,6 +620,7 @@ function initBlackHoles(){
 
   $('bh-mass').addEventListener('input', renderBlackHole);
   $('bh-mass').value = Math.log10(bhCurrent.massSun).toFixed(2);
+  initRuler();
   renderBlackHole();
 }
 
@@ -405,24 +628,61 @@ function initBlackHoles(){
 
 const planetImages = {};
 let planetCurrent = PLANETS[2];
+const ALL_PLANETS = PLANETS.concat(EXO_EARTHS.map((e) => ({ ...e, exo: true })));
+let planets3d = null;
+
+const PLANET_KIND = {
+  mercury: 'Rocoso', venus: 'Rocoso', earth: 'Rocoso · con vida', mars: 'Rocoso',
+  jupiter: 'Gigante gaseoso', saturn: 'Gigante gaseoso', uranus: 'Gigante helado', neptune: 'Gigante helado',
+};
 
 function fmtDay(hours){
   return hours > 48 ? `${num(hours / 24, 1)} días` : `${num(hours, 1)} horas`;
 }
 
+function setPlanetLabels(exo){
+  $('pl-l-mass').textContent = exo ? 'Estrella' : 'Masa';
+  $('pl-l-moons').textContent = exo ? 'Periodo orbital' : 'Lunas conocidas';
+  $('pl-l-temp').textContent = exo ? 'Temperatura de la estrella' : 'Temperatura media';
+  $('pl-l-dist').textContent = exo ? 'Distancia a la Tierra' : 'Distancia al Sol';
+  $('pl-l-day').textContent = exo ? 'Rotación' : 'Duración del día';
+}
+
+function renderExoData(p){
+  $('pl-name').textContent = p.name;
+  $('pl-kind').textContent = 'Exoplaneta tipo Tierra · zona habitable';
+  $('pl-exo-note').hidden = false;
+  $('pl-exo-note').textContent = `${p.note} La superficie en 3D es imaginada: nadie la ha visto todavía.`;
+  $('pl-radius').textContent = `${num(p.radiusEarth, 2)} × Tierra${p.radiusEst ? ' (estimado)' : ''} · ${num(p.radiusEarth * EARTH_RADIUS_KM)} km`;
+  $('pl-mass').textContent = p.star;
+  $('pl-moons').textContent = `${num(p.periodDays, 1)} días`;
+  $('pl-temp').textContent = `${num(p.starTempK)} K (el Sol: 5772 K)`;
+  $('pl-dist').textContent = `${bigNum(p.distanceLy)} años luz`;
+  $('pl-day').textContent = 'Probablemente sincrónica (un día = un año)';
+  $('pl-tilt').textContent = 'Desconocida (se muestra 0°)';
+  $('pl-compare-note').textContent = 'En "Comparar tamaños" se ven junto a la Tierra, a escala.';
+}
+
 function renderPlanetData(){
   const p = planetCurrent;
+  setPlanetLabels(!!p.exo);
+  setPressed($('pl-picker'), 'data-planet', p.id);
+  setPressed($('pl-exo-picker'), 'data-planet', p.id);
+  if (p.exo){ renderExoData(p); return; }
+  $('pl-exo-note').hidden = true;
   $('pl-name').textContent = p.name;
-  $('pl-radius').textContent = `${num(p.radiusKm)} km (${num(p.radiusKm / 6371, 2)} × Tierra)`;
+  $('pl-kind').textContent = PLANET_KIND[p.id];
+  $('pl-radius').textContent = `${num(p.radiusKm)} km (${num(p.radiusKm / EARTH_RADIUS_KM, 2)} × Tierra)`;
   $('pl-mass').textContent = `${num(p.massEarth, p.massEarth < 1 ? 3 : 1)} × Tierra`;
   $('pl-moons').textContent = `${p.moons}`;
   $('pl-temp').textContent = `${num(p.tempC)} °C (media)`;
   $('pl-dist').textContent = `${num(p.distanceAU, 2)} UA`;
-  $('pl-day').textContent = fmtDay(p.dayHours);
-
-  document.querySelectorAll('[data-planet]').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.planet === p.id));
-  });
+  $('pl-day').textContent = fmtDay(p.dayHours) + (p.retrograde ? ' · retrógrado' : '');
+  $('pl-tilt').textContent = `${num(p.tiltDeg, 1)}°`;
+  const earths = (p.radiusKm / EARTH_RADIUS_KM) ** 3;
+  $('pl-compare-note').textContent = earths >= 1.5
+    ? `En ${p.name} cabrían unas ${num(earths)} Tierras por volumen.`
+    : `${p.name} tiene ${num(earths * 100)} % del volumen de la Tierra.`;
 }
 
 async function renderPlanetImage(){
@@ -430,29 +690,34 @@ async function renderPlanetImage(){
   const cache = planetImages[p.id];
 
   if (cache){
-    showPlanetImage(cache.items[cache.index], cache.index, cache.items.length);
+    showPlanetImage(cache.items[cache.index], cache.items.length);
     return;
   }
 
-  $('pl-image').innerHTML = '<p class="muted">Buscando imagen…</p>';
+  $('pl-image').innerHTML = '<div class="photo-frame"><p class="muted">Buscando foto…</p></div>';
   try{
-    const items = await searchImages(p.search, 8);
+    let items = await searchImages(p.search, 8);
+    // Muchas exotierras no tienen fotos propias: se usa una ilustración genérica de la NASA
+    if (!items.length && p.exo) items = await searchImages('exoplanet habitable zone', 8);
     if (!items.length) throw new Error('sin imágenes');
     planetImages[p.id] = { items, index: 0 };
-    showPlanetImage(items[0], 0, items.length);
+    if (planetCurrent.id === p.id) showPlanetImage(items[0], items.length);
   }catch(e){
-    $('pl-image').innerHTML = `<p class="muted">No se pudo cargar la imagen (${esc(e.message)}).</p>`;
+    if (planetCurrent.id === p.id){
+      $('pl-image').innerHTML = `<div class="photo-frame"><p class="muted">No se pudo cargar la foto (${esc(e.message)}).</p></div>`;
+    }
   }
 }
 
-function showPlanetImage(item, index, total){
+// Imagen arriba y datos debajo (columna); el título se corta en varias líneas si es largo.
+function showPlanetImage(item, total){
   $('pl-image').innerHTML = `
-    <img src="${esc(item.src)}" alt="${esc(item.title)}" loading="lazy">
+    <div class="photo-frame"><img src="${esc(item.src)}" alt="${esc(item.title)}" loading="lazy"></div>
     <div class="image-meta">
-      <span>${esc(item.title)}${item.date ? ` · ${esc(item.date)}` : ''}</span>
-      <span>
+      <span class="photo-title">${esc(item.title)}${item.date ? ` · ${esc(item.date)}` : ''}</span>
+      <span class="photo-actions">
         <a href="${esc(item.href)}" target="_blank" rel="noopener">Ver en NASA</a>
-        ${total > 1 ? '<button type="button" id="pl-next" class="mini">Otra imagen</button>' : ''}
+        ${total > 1 ? '<button type="button" id="pl-next" class="mini">Otra foto</button>' : ''}
       </span>
     </div>`;
   const next = $('pl-next');
@@ -460,7 +725,7 @@ function showPlanetImage(item, index, total){
     next.addEventListener('click', () => {
       const cache = planetImages[planetCurrent.id];
       cache.index = (cache.index + 1) % cache.items.length;
-      showPlanetImage(cache.items[cache.index], cache.index, cache.items.length);
+      showPlanetImage(cache.items[cache.index], cache.items.length);
     });
   }
 }
@@ -471,19 +736,209 @@ function initPlanets(){
     `<button type="button" data-planet="${esc(p.id)}" aria-pressed="false">${esc(p.name)}</button>`
   ).join('');
 
-  picker.addEventListener('click', (e) => {
+  $('pl-exo-picker').innerHTML = EXO_EARTHS.map((p) =>
+    `<button type="button" data-planet="${esc(p.id)}" aria-pressed="false">${esc(p.name)}</button>`
+  ).join('');
+
+  const pick = (e) => {
     const btn = e.target.closest('[data-planet]');
     if (!btn) return;
-    planetCurrent = PLANETS.find((p) => p.id === btn.dataset.planet);
+    const prev = planetCurrent;
+    planetCurrent = ALL_PLANETS.find((p) => p.id === btn.dataset.planet);
     renderPlanetData();
     renderPlanetImage();
+    if (planets3d){
+      // En comparación: si se cambia de grupo (Sistema Solar ↔ exotierras) se muestra la otra
+      // fila; si se elige un cuerpo de la misma fila, se pasa a verlo solo.
+      const sameGroup = !!prev.exo === !!planetCurrent.exo;
+      if (planets3d.mode === 'compare' && sameGroup) setPlanetMode('single');
+      else if (planets3d.mode === 'compare') setPlanetMode('compare');
+      planets3d.show(planetCurrent.id);
+    }
+  };
+  picker.addEventListener('click', pick);
+  $('pl-exo-picker').addEventListener('click', pick);
+
+  $('pl-mode').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-mode]');
+    if (btn) setPlanetMode(btn.dataset.mode);
   });
 
   renderPlanetData();
   renderPlanetImage();
 }
 
-/* ---------- Animación de entrada de secciones ---------- */
+function setPlanetMode(mode){
+  setPressed($('pl-mode'), 'data-mode', mode);
+  $('pl-hint').textContent = mode === 'compare'
+    ? (planetCurrent.exo ? 'A escala real, junto a la Tierra' : 'A escala real: Mercurio es un punto junto a Júpiter')
+    : 'Arrastra para girar · rueda o pellizco para acercar';
+  if (planets3d) planets3d.setMode(mode);
+}
+
+/* ---------- El Sol y estrellas parecidas ---------- */
+
+let starCurrent = STARS[1];
+let stars3d = null;
+const liveStars = [];
+
+function renderStar(){
+  const s = starCurrent;
+  $('st-name').textContent = s.name;
+  $('st-type').textContent = s.type;
+  $('st-radius').textContent = `${num(s.radiusSun, 3)} R☉ (${bigNum(s.radiusSun * SUN_RADIUS_KM, 'km')})`;
+  $('st-temp').textContent = `${num(s.tempK)} K`;
+  $('st-mass').textContent = s.massSun != null ? `${num(s.massSun, 3)} M☉` : '—';
+  $('st-dist').textContent = s.id === 'sun' ? '8,3 minutos luz' : `${bigNum(s.distanceLy)} años luz`;
+  const ratio = s.radiusSun;
+  $('st-ratio').textContent = s.id === 'sun' ? 'Es el Sol'
+    : ratio >= 1 ? `${num(ratio, 2)} veces más grande` : `${num(ratio * 100)} % del tamaño del Sol`;
+  $('st-volume').textContent = s.id === 'sun' ? '1,3 millones de Tierras' : `${num(ratio ** 3, ratio ** 3 < 0.1 ? 4 : 2)} × el volumen del Sol`;
+  $('st-link').href = `https://simbad.cds.unistra.fr/simbad/sim-basic?Ident=${encodeURIComponent(s.simbad)}`;
+  setPressed($('st-picker'), 'data-star', s.id);
+  setPressed($('st-live'), 'data-star', s.id);
+  if (stars3d) stars3d.show(s);
+}
+
+function initStars(){
+  $('st-picker').innerHTML = STARS.map((s) =>
+    `<button type="button" data-star="${esc(s.id)}" aria-pressed="false">${esc(s.name)}</button>`
+  ).join('');
+  const pick = (e) => {
+    const btn = e.target.closest('[data-star]');
+    if (!btn) return;
+    starCurrent = STARS.find((s) => s.id === btn.dataset.star) || liveStars.find((s) => s.id === btn.dataset.star);
+    renderStar();
+  };
+  $('st-picker').addEventListener('click', pick);
+  $('st-live').addEventListener('click', pick);
+  renderStar();
+}
+
+// Estrellas anfitrionas de exoplanetas parecidas al Sol, las más cercanas (TAP en vivo)
+async function loadSunLikeHosts(){
+  const query = 'select distinct top 6 hostname,st_teff,st_rad,st_mass,sy_dist from pscomppars where st_teff between 5600 and 5950 and st_rad between 0.85 and 1.15 and sy_dist is not null order by sy_dist asc';
+  try{
+    setState('st-status', 'Buscando estrellas anfitrionas tipo Sol…', 'loading');
+    const rows = await fetchJSON(tapURL(query));
+    liveStars.length = 0;
+    rows.forEach((r, i) => {
+      if (r.st_rad == null || r.st_teff == null) return;
+      liveStars.push({
+        id: `live-${i}`, name: r.hostname, radiusSun: r.st_rad, tempK: r.st_teff, massSun: r.st_mass,
+        distanceLy: r.sy_dist * LY_PER_PC, type: 'Anfitriona de exoplanetas · Exoplanet Archive', simbad: r.hostname,
+      });
+    });
+    $('st-live').innerHTML = liveStars.map((s) =>
+      `<button type="button" data-star="${esc(s.id)}" aria-pressed="false">${esc(s.name)}</button>`
+    ).join('');
+    $('st-live-wrap').hidden = !liveStars.length;
+    syncSeg($('st-live'));
+    setState('st-status', `${liveStars.length} anfitrionas en vivo · actualizado ${stamp()}`, 'ok');
+  }catch(e){
+    setState('st-status', isCorsBlock(e)
+      ? 'Se muestran estrellas curadas. Para sumar anfitrionas en vivo del Archivo de Exoplanetas, configura CONFIG.exoplanetProxy.'
+      : `Anfitrionas en vivo no disponibles (${e.message}); se muestran las curadas.`, 'info');
+  }
+}
+
+/* ---------- Galaxias ---------- */
+
+let galaxy = null;
+let gxReturnFocus = null;
+
+function fmtLy(ly){
+  if (!ly) return 'Estamos dentro';
+  return `${bigNum(ly)} años luz`;
+}
+
+function initGalaxies(){
+  $('gx-list').innerHTML = GALAXIES.map((g) => `
+    <article class="card glass tilt gx-card">
+      <div class="gx-thumb" data-model="${esc(g.model)}" aria-hidden="true"></div>
+      <span class="tag">${esc(g.kind)}</span>
+      <h3>${esc(g.name)}</h3>
+      <p>${esc(g.note)}</p>
+      <div class="row"><span>Distancia</span><span>${esc(fmtLy(g.distanceLy))}</span></div>
+      <button type="button" class="primary" data-galaxy="${esc(g.id)}">Entrar</button>
+    </article>`).join('');
+
+  $('gx-hud-picker').innerHTML = GALAXIES.map((g) =>
+    `<button type="button" data-galaxy="${esc(g.id)}" aria-pressed="false">${esc(g.name.split(' (')[0])}</button>`
+  ).join('');
+
+  const enter = (e) => {
+    const btn = e.target.closest('[data-galaxy]');
+    if (!btn) return;
+    if (!galaxy){
+      toast('Las galaxias en 3D necesitan WebGL, que no está disponible en este navegador.');
+      return;
+    }
+    if (!document.body.classList.contains('exploring')) gxReturnFocus = btn;
+    galaxy.enter(btn.dataset.galaxy);
+  };
+  $('gx-list').addEventListener('click', enter);
+  $('gx-hud-picker').addEventListener('click', enter);
+  $('explore-mw').addEventListener('click', (e) => {
+    if (!galaxy){ toast('Las galaxias en 3D necesitan WebGL, que no está disponible en este navegador.'); return; }
+    gxReturnFocus = e.currentTarget;
+    galaxy.enter('mw');
+  });
+  $('gx-exit').addEventListener('click', () => galaxy && galaxy.exit());
+  $('gx-zoom-in').addEventListener('click', () => galaxy && galaxy.zoomBy(0.8));
+  $('gx-zoom-out').addEventListener('click', () => galaxy && galaxy.zoomBy(1.25));
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && galaxy && galaxy.current) galaxy.exit();
+  });
+}
+
+// Llamado por galaxy.js cuando se entra o se sale de una galaxia
+function onGalaxyState(id){
+  const exploring = !!id;
+  const wasExploring = document.body.classList.contains('exploring');
+  document.body.classList.toggle('exploring', exploring);
+  $('gx-hud').hidden = !exploring;
+  $('gx-hint').hidden = !exploring;
+  if (exploring){
+    const g = GALAXIES.find((x) => x.id === id);
+    $('gx-hud-name').textContent = g.name;
+    $('gx-hud-kind').textContent = g.kind;
+    $('gx-hud-note').textContent = g.note;
+    $('gx-hud-dist').textContent = fmtLy(g.distanceLy);
+    $('gx-hud-diam').textContent = `${bigNum(g.diameterLy)} años luz`;
+    $('gx-hud-stars').textContent = g.stars;
+    $('gx-hud-bh').textContent = g.bh;
+    setPressed($('gx-hud-picker'), 'data-galaxy', id);
+    if (!wasExploring) $('gx-hud-name').focus({ preventScroll: true });
+  } else if (wasExploring && gxReturnFocus){
+    gxReturnFocus.focus({ preventScroll: true });
+  }
+}
+
+/* ---------- Navegación: sección activa ---------- */
+
+function initNav(){
+  const links = [...document.querySelectorAll('#nav-links a')];
+  const map = new Map(links.map((a) => [a.getAttribute('href').slice(1), a]));
+  if (!('IntersectionObserver' in window)) return;
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (!en.isIntersecting) return;
+      links.forEach((a) => a.removeAttribute('aria-current'));
+      const a = map.get(en.target.id);
+      if (a){
+        a.setAttribute('aria-current', 'true');
+        // Mantener visible el enlace activo en la barra desplazable (móvil)
+        const bar = $('nav-links');
+        const target = a.offsetLeft - bar.clientWidth / 2 + a.offsetWidth / 2;
+        bar.scrollTo({ left: target, behavior: reduceMotion ? 'auto' : 'smooth' });
+      }
+    });
+  }, { rootMargin: '-45% 0px -50% 0px' });
+  document.querySelectorAll('main section[id]').forEach((s) => io.observe(s));
+}
+
+/* ---------- Animación de entrada de secciones y fondo ---------- */
 
 function initReveal(){
   const sections = document.querySelectorAll('main section');
@@ -498,10 +953,57 @@ function initReveal(){
         io.unobserve(en.target);
       }
     });
-  }, { threshold: 0.08 });
+  }, { threshold: 0.06 });
   sections.forEach((s) => {
     s.classList.add('reveal');
     io.observe(s);
+  });
+}
+
+// El fondo se atenúa al bajar para que el texto sobre el vidrio siga legible
+function initBackdropFade(){
+  const canvas = $('galaxy');
+  let ticking = false;
+  const fade = () => {
+    ticking = false;
+    if (document.body.classList.contains('exploring')) return;
+    const k = Math.min(scrollY / (innerHeight * 1.1), 1);
+    canvas.style.opacity = String(1 - k * 0.5);
+  };
+  addEventListener('scroll', () => {
+    if (!ticking){ ticking = true; requestAnimationFrame(fade); }
+  }, { passive: true });
+  fade();
+}
+
+/* ---------- Escenas 3D ---------- */
+
+function init3D(){
+  // Cada escena tiene su propio contexto WebGL y solo dibuja cuando está a la vista.
+  galaxy = startGalaxy($('galaxy'), { onState: onGalaxyState });
+  if (galaxy){
+    galaxy.bindHome(document.querySelector('.hero'));
+    galaxy.bindExplore($('galaxy'));
+  } else {
+    $('hero-hint').textContent = 'Tu navegador no tiene WebGL activo: el fondo 3D y las escenas interactivas no están disponibles, pero los datos en vivo sí.';
+  }
+  // Cada escena se inicia por separado: si una falla, las demás siguen
+  const safe = (name, fn) => {
+    try{ return fn(); }catch(e){ console.error(`Error al iniciar la escena 3D "${name}":`, e); return null; }
+  };
+  bh3d = safe('agujero negro', () => startBlackHole3D($('bh-stage')));
+  if (bh3d) renderBlackHole();
+  planets3d = safe('planetas', () => startPlanets3D($('pl-stage'), $('pl-labels')));
+  if (planets3d) planets3d.show(planetCurrent.id);
+  stars3d = safe('estrellas', () => startStars3D($('st-stage'), $('st-labels')));
+  if (stars3d) stars3d.show(starCurrent);
+
+  const scenes = { bh: bh3d, pl: planets3d, st: stars3d };
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-zoom]');
+    if (!b) return;
+    const s = scenes[b.dataset.zoom];
+    if (s) s.zoomBy(b.dataset.dir === 'in' ? 0.8 : 1.25);
   });
 }
 
@@ -512,16 +1014,29 @@ function refreshAll(){
   loadSpaceWeather();
   loadAlerts().catch((e) => setState('alerts-status', `No disponible (${e.message})`, 'err'));
   loadNEO().catch((e) => setState('neo-status', `No disponible (${e.message})`, 'err'));
-  loadDiscoveries().catch((e) => setState('disc-status', `No disponible (${e.message})`, 'err'));
+  loadDiscoveries().catch(discoveriesFailed);
   loadAPOD();
 }
 
 function init(){
   initNotifyButton();
+  initPressFeedback();
   initBlackHoles();
   initPlanets();
+  initStars();
+  initGalaxies();
+  initNav();
   initReveal();
-  startGalaxy($('galaxy'));
+  initBackdropFade();
+  initTilt();
+  drawISSGlobe();
+  try{
+    init3D();
+  }catch(e){
+    // Un fallo en una escena 3D nunca debe tumbar los datos en vivo
+    console.error('Error al iniciar las escenas 3D:', e);
+  }
+  document.querySelectorAll('.seg').forEach(syncSeg);
 
   $('refresh').addEventListener('click', refreshAll);
   $('disc-link').addEventListener('click', () => {
@@ -533,11 +1048,12 @@ function init(){
   });
 
   refreshAll();
+  loadSunLikeHosts();
   setInterval(loadISS, CONFIG.intervals.iss);
   setInterval(() => { loadSpaceWeather(); loadAlerts().catch(() => {}); }, CONFIG.intervals.space);
   setInterval(() => {
     loadNEO().catch(() => {});
-    loadDiscoveries().catch(() => {});
+    loadDiscoveries().catch(discoveriesFailed);
     loadAPOD();
   }, CONFIG.intervals.neo);
 }

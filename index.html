@@ -2,415 +2,860 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#04050b">
 <title>Cosmos en vivo</title>
-<meta name="description" content="Datos reales del espacio en vivo: ISS, clima espacial, alertas, nuevos planetas, agujeros negros y planetas, con una galaxia 3D animada.">
+<meta name="description" content="Datos reales del espacio en vivo (ISS, clima espacial, alertas, nuevos planetas, asteroides) con galaxias, planetas, el Sol y un agujero negro en 3D interactivo.">
 <style>
+/* ==========================================================================
+   Tokens. La página es siempre oscura (modo oscuro explícito).
+   Liquid Glass: superficies con ~75 % de transparencia (alpha ≈ 0,25) + desenfoque
+   y saturación del fondo, borde con luz en el canto superior y sombras en capas.
+   ========================================================================== */
 :root{
-  --bg:#05060d;
-  --glass:rgba(18,22,36,.58);
-  --glass-strong:rgba(18,22,36,.92);
-  --line:rgba(255,255,255,.12);
-  --text:#eef2ff;
-  --muted:#9aa4c7;
-  --accent:#8ab4ff;
-  --warm:#ffd7a1;
-  --ok:#7ee2b8;
-  --bad:#ff8a8a;
+  color-scheme:dark;
+  --bg:#04050b;
+  --text:#f6f8ff;
+  --text-2:rgba(236,241,255,.80);
+  --text-3:rgba(236,241,255,.62);
+  --accent:#86b2ff;
+  --accent-strong:#a9c8ff;
+  --warm:#ffd29a;
+  --ok:#73e6b8;
+  --bad:#ff8f8f;
   --new:#ffd166;
+
+  /* Material de vidrio */
+  --glass-bg:rgba(20,24,44,.25);
+  --glass-tint:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.02) 42%,rgba(255,255,255,.03));
+  --glass-blur:28px;
+  --glass-sat:190%;
+  --glass-border:rgba(255,255,255,.14);
+  --glass-hi:rgba(255,255,255,.34);
+  --glass-solid:#121629;
+  --control-bg:rgba(255,255,255,.08);
+  --control-bg-hover:rgba(255,255,255,.14);
+  --line:rgba(255,255,255,.10);
+
+  /* Profundidad */
+  --shadow-1:0 1px 1px rgba(0,0,0,.25),0 6px 18px rgba(0,0,0,.22);
+  --shadow-2:0 2px 4px rgba(0,0,0,.25),0 18px 48px rgba(0,0,0,.38),0 40px 90px rgba(0,0,0,.25);
+  --shadow-text:0 1px 2px rgba(0,0,0,.45),0 0 12px rgba(0,0,0,.25);
+
+  /* Formas */
+  --r-xl:30px;
+  --r-lg:24px;
+  --r-md:18px;
+  --r-sm:12px;
+  --r-pill:999px;
+
+  /* Movimiento: resorte con sobreimpulso leve y salida suave */
+  --spring:cubic-bezier(.34,1.32,.64,1);
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --press:90ms;
+  --dur-2:.32s;
+  --dur-3:.6s;
+
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro",system-ui,"Segoe UI",Roboto,sans-serif;
+  --font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro",system-ui,"Segoe UI",Roboto,sans-serif;
+  --maxw:1160px;
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{scroll-behavior:smooth;scroll-padding-top:72px}
+html{scroll-behavior:smooth;scroll-padding-top:84px;-webkit-text-size-adjust:100%}
 html,body{margin:0;min-height:100%}
 body{
   background:var(--bg);color:var(--text);
-  font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
-  -webkit-font-smoothing:antialiased;
+  font:400 1rem/1.5 var(--font);
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden;
 }
-#galaxy{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0;transition:opacity .4s}
+img{max-width:100%}
+a{color:var(--accent-strong);text-underline-offset:3px}
+a:hover{color:#fff}
+:focus-visible{outline:2px solid var(--accent-strong);outline-offset:3px;border-radius:10px}
+.muted{color:var(--text-2)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.skip-link{
+  position:fixed;left:16px;top:-60px;z-index:50;padding:10px 16px;border-radius:var(--r-pill);
+  background:var(--glass-solid);color:var(--text);transition:top .2s var(--ease-out);
+}
+.skip-link:focus{top:12px}
+
+/* Fondo 3D */
+#galaxy{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0;transition:opacity .5s var(--ease-out);touch-action:none;pointer-events:none}
 .veil{
   position:fixed;inset:0;pointer-events:none;z-index:1;
-  background:radial-gradient(ellipse at center,transparent 45%,rgba(5,6,13,.6) 100%);
+  background:
+    radial-gradient(120% 80% at 50% 40%,transparent 40%,rgba(4,5,11,.55) 100%),
+    linear-gradient(180deg,transparent 60%,rgba(4,5,11,.35));
+  transition:opacity .5s var(--ease-out);
 }
-:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
 
-/* Resumen en vivo */
-.chips{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:0 0 24px}
-.chip{
-  display:flex;flex-direction:column;align-items:flex-start;min-width:132px;padding:10px 16px;
-  text-decoration:none;color:var(--text);border-radius:16px;
-  background:var(--glass);border:1px solid var(--line);
-  -webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
-  transition:transform .3s cubic-bezier(.2,.8,.2,1),border-color .3s;
+/* ==========================================================================
+   Material Liquid Glass
+   ========================================================================== */
+.glass{
+  position:relative;isolation:isolate;
+  background:var(--glass-tint),var(--glass-bg);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border:1px solid var(--glass-border);
+  box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 rgba(255,255,255,.04),var(--shadow-2);
+  text-shadow:var(--shadow-text);
 }
-.chip:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.25)}
-.chip small{color:var(--muted);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase}
-.chip b{font-size:1.1rem;font-weight:600;font-variant-numeric:tabular-nums}
+/* Canto con luz: borde degradado que se enciende arriba a la izquierda */
+.glass::after{
+  content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;z-index:2;
+  background:linear-gradient(155deg,rgba(255,255,255,.55),rgba(255,255,255,.08) 28%,rgba(255,255,255,0) 55%,rgba(255,255,255,.14) 85%,rgba(255,255,255,.3));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+/* Reflejo especular que sigue al puntero (variables --mx/--my desde JS) */
+.glass::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;
+  background:radial-gradient(420px circle at var(--mx,20%) var(--my,-10%),rgba(255,255,255,.10),transparent 60%);
+  transition:opacity .3s;
+}
 
-/* Entrada de secciones al hacer scroll */
-.reveal{opacity:0;transform:translateY(28px);transition:opacity .8s cubic-bezier(.2,.8,.2,1),transform .8s cubic-bezier(.2,.8,.2,1)}
-.reveal.in{opacity:1;transform:none}
-a{color:var(--accent)}
-.muted{color:var(--muted)}
-
-/* Navegación */
-nav{
-  position:sticky;top:0;z-index:10;
-  background:rgba(5,6,13,.6);
-  -webkit-backdrop-filter:blur(20px) saturate(160%);
-  backdrop-filter:blur(20px) saturate(160%);
-  border-bottom:1px solid var(--line);
+/* ==========================================================================
+   Navegación
+   ========================================================================== */
+.topbar{position:sticky;top:0;z-index:20;padding:10px 16px 0;padding-top:max(10px,env(safe-area-inset-top))}
+.topbar-inner{
+  max-width:var(--maxw);margin:0 auto;border-radius:var(--r-pill);
+  display:flex;align-items:center;gap:8px;padding:6px;
+  --glass-bg:rgba(14,17,32,.32);
 }
-nav .inner{
-  max-width:1120px;margin:0 auto;padding:10px 16px;
-  display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+.brand{
+  display:flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;flex:none;
+  color:var(--text);text-decoration:none;font-weight:650;letter-spacing:-.01em;
 }
-nav .inner::-webkit-scrollbar{display:none}
-nav a{
-  color:var(--muted);text-decoration:none;white-space:nowrap;
-  padding:6px 12px;border-radius:99px;font-size:.9rem;
-  transition:background .2s,color .2s;
+.brand-orb{
+  width:22px;height:22px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff 0,#b9d0ff 18%,#5b7dff 45%,#1a1f5c 75%);
+  box-shadow:0 0 14px rgba(120,150,255,.6),inset -2px -3px 6px rgba(0,0,0,.4);
 }
-nav a:hover{background:rgba(255,255,255,.08);color:var(--text)}
+.nav-links{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;min-width:0;flex:1;-webkit-mask:linear-gradient(90deg,#000 88%,transparent);mask:linear-gradient(90deg,#000 88%,transparent)}
+.nav-links::-webkit-scrollbar{display:none}
+.nav-links a{
+  position:relative;color:var(--text-2);text-decoration:none;white-space:nowrap;
+  padding:8px 12px;border-radius:var(--r-pill);font-size:.88rem;font-weight:500;
+  transition:background var(--dur-2) var(--ease-out),color var(--dur-2);
+}
+.nav-links a:hover{background:var(--control-bg);color:var(--text)}
+.nav-links a:active{transform:scale(.96);transition:transform var(--press) ease-out}
+.nav-links a[aria-current="true"]{background:rgba(255,255,255,.16);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
 .pill{
-  display:inline-block;min-width:20px;padding:0 6px;margin-left:4px;
-  border-radius:99px;background:var(--new);color:#1b1400;font-size:.75rem;text-align:center;
+  display:inline-block;min-width:18px;padding:0 6px;margin-left:4px;
+  border-radius:var(--r-pill);background:var(--new);color:#1b1400;font-size:.72rem;font-weight:700;text-align:center;text-shadow:none;
 }
 
-main{position:relative;z-index:2;max-width:1120px;margin:0 auto;padding:0 16px 40px}
-header.hero{text-align:center;padding:12vh 0 48px}
+/* ==========================================================================
+   Estructura
+   ========================================================================== */
+main{position:relative;z-index:2;max-width:var(--maxw);margin:0 auto;padding:0 16px 40px}
+.hero{
+  position:relative;text-align:center;min-height:min(88svh,820px);
+  display:flex;flex-direction:column;justify-content:center;align-items:center;
+  padding:9vh 0 40px;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none;
+}
+.hero.is-grabbing{cursor:grabbing}
+/* Velo suave detrás del texto del hero para que se lea sobre el núcleo brillante */
+.hero::before{content:"";position:absolute;left:50%;top:50%;width:min(900px,110%);height:70%;transform:translate(-50%,-55%);z-index:-1;pointer-events:none;background:radial-gradient(closest-side,rgba(4,5,11,.55),rgba(4,5,11,.25) 60%,transparent)}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:8px;margin:0 0 18px;padding:6px 14px;border-radius:var(--r-pill);
+  font-size:.8rem;font-weight:600;letter-spacing:.02em;color:var(--text-2);
+}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 rgba(115,230,184,.6);animation:pulse 2.4s infinite}
 h1{
-  font-size:clamp(2.4rem,7vw,4.5rem);line-height:1.05;letter-spacing:-.03em;
-  font-weight:700;margin:0 0 12px;
-  background:linear-gradient(180deg,#fff,#9fb6ff);
+  font-family:var(--font-display);
+  font-size:clamp(2.6rem,9vw,5.6rem);line-height:1.02;letter-spacing:-.045em;
+  font-weight:750;margin:0 0 14px;
+  background:linear-gradient(180deg,#fff 30%,#a9bdff 100%);
   -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 4px 24px rgba(80,110,255,.35));
 }
-.lead{color:var(--muted);font-size:1.1rem;max-width:560px;margin:0 auto 24px}
-
-section{padding-top:56px}
-section > h2.section-title{
-  font-size:clamp(1.5rem,4vw,2rem);letter-spacing:-.02em;margin:0 0 6px;
+.lead{color:var(--text-2);font-size:clamp(1.02rem,2.4vw,1.2rem);line-height:1.45;max-width:600px;margin:0 auto 28px;text-shadow:var(--shadow-text)}
+.chips{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:0 0 24px;max-width:860px}
+.chip{
+  display:flex;flex-direction:column;align-items:flex-start;min-width:136px;padding:11px 16px;
+  text-decoration:none;color:var(--text);border-radius:var(--r-md);
+  transition:transform var(--dur-3) var(--spring),box-shadow var(--dur-2);
 }
-.section-lead{color:var(--muted);margin:0 0 20px;max-width:680px}
+.chip:hover{transform:translateY(-3px)}
+.chip:active{transform:scale(.97);transition-duration:var(--press)}
+.chip small{color:var(--text-2);font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.chip b{font-size:1.15rem;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.hero-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.hint{margin:22px 0 0;font-size:.82rem;color:var(--text-3)}
 
-.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+section{padding-top:72px}
+.section-head{margin:0 0 22px;max-width:720px}
+.kicker{margin:0 0 6px;font-size:.78rem;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-strong);text-shadow:var(--shadow-text)}
+.section-title{
+  font-family:var(--font-display);
+  font-size:clamp(1.7rem,4.6vw,2.6rem);line-height:1.08;letter-spacing:-.03em;font-weight:700;margin:0 0 8px;
+  text-shadow:var(--shadow-text);
+}
+.section-lead{color:var(--text-2);margin:0;font-size:1.02rem;text-shadow:var(--shadow-text)}
+
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
+.grid > *{min-width:0}
 .card{
-  position:relative;
-  background:var(--glass);
-  -webkit-backdrop-filter:blur(24px) saturate(160%);
-  backdrop-filter:blur(24px) saturate(160%);
-  border:1px solid var(--line);border-radius:22px;padding:22px;
-  box-shadow:0 20px 60px rgba(0,0,0,.35);
-  transition:transform .5s cubic-bezier(.2,.8,.2,1),border-color .3s;
-  animation:rise .7s cubic-bezier(.2,.8,.2,1) both;
+  border-radius:var(--r-lg);padding:22px;
+  animation:rise .8s var(--ease-out) backwards;
+  transition:transform .7s var(--spring),box-shadow var(--dur-2);
+  transform-style:preserve-3d;
 }
-.card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.22)}
 .card.wide{grid-column:1/-1}
-.card h2{
-  font-size:.78rem;text-transform:uppercase;letter-spacing:.12em;
-  color:var(--muted);font-weight:600;margin:0 0 14px;
+.card-title{
+  font-size:.76rem;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--text-2);font-weight:650;margin:0 0 12px;display:flex;align-items:center;gap:8px;
 }
-.big{font-size:2.2rem;font-weight:650;letter-spacing:-.02em;margin:0;font-variant-numeric:tabular-nums}
+.big{font-family:var(--font-display);font-size:2.4rem;line-height:1.1;font-weight:680;letter-spacing:-.03em;margin:0 0 6px;font-variant-numeric:tabular-nums}
 .row{
-  display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:8px 0;
-  border-top:1px solid var(--line);font-variant-numeric:tabular-nums;
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0;
+  border-top:1px solid var(--line);font-variant-numeric:tabular-nums;font-size:.95rem;
 }
-.row span:first-child{color:var(--muted)}
-.row span:last-child{text-align:right}
-.bar{height:8px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin:14px 0 6px}
+.row > span{min-width:0;overflow-wrap:anywhere}
+.row span:first-child{color:var(--text-2);flex:none;max-width:55%}
+.row span:last-child{text-align:right;font-weight:500}
+.bar{height:8px;border-radius:var(--r-pill);background:rgba(255,255,255,.1);overflow:hidden;margin:14px 0 8px;box-shadow:inset 0 1px 2px rgba(0,0,0,.4)}
 .bar i{
   display:block;height:100%;width:0;border-radius:inherit;
   background:linear-gradient(90deg,var(--ok),var(--warm),var(--bad));
-  transition:width .9s cubic-bezier(.2,.8,.2,1);
+  transition:width 1s var(--spring);
 }
-.status{font-size:.85rem;color:var(--muted);min-height:1.3em;margin:12px 0 0}
+.status{font-size:.84rem;color:var(--text-3);min-height:1.3em;margin:12px 0 0}
 .status.err{color:var(--bad)}
-.status.ok{color:var(--muted)}
+.status.info{color:var(--text-2)}
+.info-card{padding:18px;grid-column:1/-1}
+.info-card p{margin:0 0 8px}
+.status.loading::before{content:"";display:inline-block;width:.8em;height:.8em;margin-right:6px;vertical-align:-1px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .9s linear infinite}
 
-/* Alertas */
+/* Tarjetas con inclinación 3D al pasar el puntero (solo punteros finos) */
+.tilt{will-change:transform}
+.tilt.is-tilting{transition:transform .12s ease-out,box-shadow var(--dur-2)}
+
+/* ISS: globo ortográfico en canvas 2D */
+.iss-wrap{display:flex;gap:14px;align-items:center}
+.iss-wrap > div{flex:1;min-width:0}
+#iss-globe{width:96px;height:96px;flex:none;border-radius:50%;filter:drop-shadow(0 8px 20px rgba(60,120,255,.35))}
+
+/* ==========================================================================
+   Controles
+   ========================================================================== */
+button{
+  font:inherit;font-weight:550;color:var(--text);background:var(--control-bg);
+  border:1px solid var(--glass-border);border-radius:var(--r-pill);padding:10px 18px;cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18);
+  transition:transform var(--dur-2) var(--spring),background var(--dur-2),border-color var(--dur-2),color var(--dur-2);
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+}
+button:hover{background:var(--control-bg-hover)}
+/* Respuesta inmediata al presionar (pointer-down), sin esperar al click */
+button:active,button.is-pressed{transform:scale(.95);transition:transform var(--press) ease-out}
+button.primary{
+  background:linear-gradient(180deg,#9fc0ff,#5f8dff);color:#061331;border-color:transparent;text-shadow:none;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 8px 24px rgba(80,120,255,.4);
+}
+button.primary:hover{background:linear-gradient(180deg,#b3ceff,#7099ff)}
+button.mini{padding:6px 12px;font-size:.85rem}
+button.icon{width:40px;height:40px;padding:0;display:inline-grid;place-items:center;font-size:1.2rem;line-height:1}
+button:disabled{opacity:.5;cursor:default}
+
+/* Control segmentado con "pulgar" de vidrio que se desliza con resorte */
+.seg{
+  position:relative;display:flex;flex-wrap:wrap;gap:2px;padding:4px;margin:0 0 16px;
+  border-radius:22px;background:rgba(0,0,0,.22);border:1px solid var(--line);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.35);width:fit-content;max-width:100%;
+}
+.seg button{
+  position:relative;z-index:1;background:transparent;border:0;box-shadow:none;
+  padding:8px 14px;color:var(--text-2);font-size:.92rem;
+}
+.seg button:hover{background:transparent;color:var(--text)}
+.seg button[aria-pressed="true"]{color:#fff}
+.seg-thumb{
+  position:absolute;left:0;top:0;width:0;height:0;border-radius:var(--r-pill);z-index:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,.12));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(255,255,255,.08),0 6px 16px rgba(0,0,0,.35);
+  transition:transform .55s var(--spring),width .55s var(--spring),height .55s var(--spring),opacity .2s;
+}
+.seg-label{font-size:.78rem;color:var(--text-3);margin:0 0 6px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+
+input[type="range"]{width:100%;accent-color:var(--accent);height:28px}
+.slider{margin:6px 0 4px}
+.slider label{display:flex;justify-content:space-between;gap:12px;color:var(--text-2);font-size:.92rem;margin-bottom:2px}
+.slider output{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ==========================================================================
+   Escenas 3D
+   ========================================================================== */
+.stage{
+  position:relative;height:clamp(300px,58vh,540px);border-radius:var(--r-lg);overflow:hidden;
+  background:radial-gradient(120% 100% at 50% 40%,#0b1124 0%,#020308 70%);
+  border:1px solid var(--line);box-shadow:inset 0 0 0 1px rgba(0,0,0,.4),inset 0 20px 60px rgba(0,0,0,.4);
+  touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;
+}
+.stage.is-grabbing{cursor:grabbing}
+.stage canvas{width:100%;height:100%;display:block}
+.stage:focus-visible{outline-offset:2px}
+.stage-hint{
+  position:absolute;left:12px;bottom:12px;max-width:calc(100% - 120px);
+  font-size:.76rem;line-height:1.3;color:var(--text-2);padding:6px 12px;border-radius:var(--r-pill);pointer-events:none;
+  --glass-bg:rgba(10,12,24,.35);box-shadow:var(--shadow-1);
+}
+.stage-tools{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;z-index:3}
+.stage-tools button{--glass-bg:rgba(10,12,24,.35);border-radius:50%}
+.stage-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.stage-label{
+  position:absolute;left:0;top:0;white-space:nowrap;font-size:.72rem;font-weight:600;color:var(--text);
+  padding:2px 8px;border-radius:var(--r-pill);background:rgba(8,10,20,.55);border:1px solid var(--line);
+  opacity:0;transition:opacity .25s;
+}
+.stage-fallback{position:absolute;inset:0;display:grid;place-items:center;margin:0;padding:24px;text-align:center;color:var(--text-2);font-size:.95rem}
+.no-webgl .hero{cursor:default}
+
+.split{display:grid;gap:20px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:900px){.split{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);align-items:start}}
+.split > *{min-width:0}
+.obj-head h3{font-family:var(--font-display);font-size:1.7rem;line-height:1.15;letter-spacing:-.025em;margin:0 0 4px;font-weight:700}
+.obj-head p{margin:0 0 4px}
+.tag{display:inline-block;font-size:.74rem;font-weight:650;letter-spacing:.04em;padding:3px 10px;border-radius:var(--r-pill);background:rgba(134,178,255,.16);color:var(--accent-strong);margin-bottom:8px;text-shadow:none}
+.toolbar{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:flex-end;justify-content:space-between;margin-bottom:4px}
+.toolbar .seg{margin-bottom:12px}
+.note{font-size:.84rem;color:var(--text-3);margin:10px 0 0}
+
+/* Regla logarítmica de tamaños (agujeros negros) */
+.ruler{position:relative;height:124px;margin:18px 0 8px}
+.ruler-track{position:absolute;left:0;right:0;top:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,rgba(134,178,255,.25),rgba(255,210,154,.35))}
+.ruler-tick{position:absolute;top:54px;width:0;height:16px;border-left:1px solid rgba(255,255,255,.35)}
+.ruler-tick span{position:absolute;left:0;transform:translateX(-50%);font-size:.68rem;color:var(--text-3);white-space:nowrap}
+.ruler-tick.start span{transform:none}
+.ruler-tick.end span{transform:translateX(-100%)}
+/* Cuatro filas de etiquetas para que no se pisen en pantallas chicas */
+.ruler-tick.up span{bottom:20px}
+.ruler-tick.up2 span{bottom:38px}
+.ruler-tick.down span{top:20px}
+.ruler-tick.down2 span{top:38px}
+.ruler-mark{
+  position:absolute;top:48px;left:0;width:28px;height:28px;margin-left:-14px;border-radius:50%;
+  background:radial-gradient(circle,#000 45%,#ffb36b 52%,rgba(255,150,80,.4) 66%,transparent 72%);
+  box-shadow:0 0 18px rgba(255,170,90,.6);
+  transition:left .7s var(--spring);
+}
+.ruler-legend{display:flex;justify-content:space-between;font-size:.7rem;color:var(--text-3)}
+
+/* ==========================================================================
+   Galaxias
+   ========================================================================== */
+.gx-card{display:flex;flex-direction:column;gap:10px;padding:18px}
+.gx-card h3{margin:0;font-size:1.15rem;letter-spacing:-.015em}
+.gx-card p{margin:0;font-size:.9rem;color:var(--text-2)}
+.gx-card button{margin-top:auto;align-self:flex-start}
+.gx-thumb{height:120px;border-radius:var(--r-md);position:relative;overflow:hidden;background:#03040a;border:1px solid var(--line)}
+.gx-thumb::before{content:"";position:absolute;inset:0;margin:auto}
+.gx-thumb[data-model="barred"]::before{
+  width:150px;height:84px;border-radius:50%;
+  background:radial-gradient(ellipse 18% 10% at 50% 50%,#fff3d8,#ffd39a 50%,transparent 100%),
+             conic-gradient(from 20deg,transparent 0 8%,rgba(150,185,255,.75) 14%,transparent 24% 50%,rgba(150,185,255,.75) 64%,transparent 74%);
+  -webkit-mask:radial-gradient(closest-side,#000 40%,transparent 100%);mask:radial-gradient(closest-side,#000 40%,transparent 100%);
+  transform:rotate(-12deg);filter:blur(1.5px);
+}
+.gx-thumb[data-model="spiral"]::before{
+  width:190px;height:54px;border-radius:50%;
+  background:radial-gradient(ellipse 20% 30% at 50% 50%,#fff2d6,#ffd9a8 40%,rgba(200,215,255,.5) 70%,transparent 100%),
+             repeating-radial-gradient(ellipse at 50% 50%,rgba(200,215,255,.35) 0 6px,transparent 6px 12px);
+  -webkit-mask:radial-gradient(closest-side,#000 50%,transparent 100%);mask:radial-gradient(closest-side,#000 50%,transparent 100%);
+  transform:rotate(-28deg);filter:blur(1px);
+}
+.gx-thumb[data-model="elliptical"]::before{
+  width:120px;height:104px;border-radius:50%;
+  background:radial-gradient(closest-side,#fff6e4,#ffdcae 25%,rgba(255,200,140,.35) 60%,transparent 100%);
+}
+.gx-thumb[data-model="elliptical"]::after{
+  content:"";position:absolute;left:50%;top:50%;width:70px;height:3px;border-radius:2px;transform-origin:0 50%;transform:rotate(-24deg);
+  background:linear-gradient(90deg,rgba(170,200,255,.9),transparent);filter:blur(.6px);
+}
+.gx-thumb[data-model="sombrero"]::before{
+  width:200px;height:56px;border-radius:50%;
+  background:linear-gradient(180deg,transparent 47%,rgba(20,10,4,.95) 50%,transparent 56%),
+             radial-gradient(closest-side,#fff4dc,#ffe0b0 35%,rgba(255,220,170,.35) 70%,transparent 100%);
+}
+
+/* Interfaz de exploración (al "entrar" a una galaxia) */
+body.exploring{overflow:hidden}
+body.exploring main,body.exploring .topbar,body.exploring footer{opacity:0;visibility:hidden;transition:opacity .4s var(--ease-out),visibility 0s .4s}
+main,.topbar{transition:opacity .5s var(--ease-out),visibility 0s}
+body.exploring #galaxy{opacity:1!important;cursor:grab;pointer-events:auto}
+body.exploring #galaxy.is-grabbing{cursor:grabbing}
+body.exploring .veil{opacity:.35}
+.gx-hud{
+  position:fixed;z-index:30;left:16px;right:16px;bottom:max(16px,env(safe-area-inset-bottom));
+  max-width:560px;margin:0 auto;border-radius:var(--r-xl);padding:18px 18px 16px;
+  animation:materialize .55s var(--spring) both;
+}
+.gx-hud-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.gx-hud h2{font-family:var(--font-display);margin:0;font-size:1.5rem;letter-spacing:-.02em;line-height:1.15}
+.gx-hud p{margin:4px 0 0;font-size:.9rem;color:var(--text-2)}
+.gx-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px;margin:12px 0}
+.gx-facts .row{font-size:.85rem;padding:6px 0}
+.gx-hud .seg{margin:0}
+.gx-hud-tools{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.gx-hud-tools .zoom{display:flex;gap:6px}
+.gx-hint{position:fixed;z-index:30;top:max(16px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:.8rem;color:var(--text-2);padding:6px 14px;border-radius:var(--r-md);text-align:center;width:max-content;max-width:calc(100vw - 32px);--glass-bg:rgba(10,12,24,.35)}
+
+/* ==========================================================================
+   Alertas, descubrimientos, planetas, APOD
+   ========================================================================== */
 .alerts{list-style:none;margin:0;padding:0;display:grid;gap:10px}
 .alert{
-  display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:baseline;
-  padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid var(--line);
+  display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:baseline;
+  padding:12px 14px;border-radius:var(--r-md);background:rgba(255,255,255,.05);border:1px solid var(--line);
 }
-.alert strong{font-size:.75rem;letter-spacing:.08em;padding:2px 8px;border-radius:99px;background:rgba(255,255,255,.1)}
-.alert span{font-size:.95rem}
-.alert time{grid-column:2;color:var(--muted);font-size:.8rem}
-.alert.warning strong{background:rgba(255,138,138,.2);color:var(--bad)}
+.alert strong{font-size:.72rem;letter-spacing:.08em;padding:3px 9px;border-radius:var(--r-pill);background:rgba(255,255,255,.12);text-shadow:none}
+.alert span{font-size:.95rem;overflow-wrap:anywhere}
+.alert time{grid-column:2;color:var(--text-3);font-size:.8rem}
+.alert.warning strong{background:rgba(255,143,143,.2);color:var(--bad)}
 .alert.alert strong{background:rgba(255,209,102,.2);color:var(--new)}
-.alert.watch strong{background:rgba(255,215,160,.18);color:var(--warm)}
-.alert.summary strong,.alert.info strong{background:rgba(138,180,255,.18);color:var(--accent)}
+.alert.watch strong{background:rgba(255,210,154,.18);color:var(--warm)}
+.alert.summary strong,.alert.info strong{background:rgba(134,178,255,.18);color:var(--accent-strong)}
 
-/* Descubrimientos */
-.disc{padding:18px;animation-delay:calc(var(--i,0)*60ms)}
-.disc h3{margin:0 0 2px;font-size:1.1rem;letter-spacing:-.01em}
-.disc p{margin:0 0 6px;font-size:.9rem}
-.disc .row{font-size:.9rem}
-.disc.is-new{border-color:rgba(255,209,102,.5)}
+.disc{padding:18px;animation-delay:calc(var(--i,0) * 60ms)}
+.disc h3{margin:0 0 2px;font-size:1.08rem;letter-spacing:-.01em;overflow-wrap:anywhere;padding-right:60px}
+.disc p{margin:0 0 8px;font-size:.9rem}
+.disc .row{font-size:.88rem}
+.disc.is-new{border-color:rgba(255,209,102,.55)}
 .badge{
-  position:absolute;top:14px;right:14px;
-  font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;
-  padding:3px 9px;border-radius:99px;background:var(--new);color:#1b1400;font-weight:600;
+  position:absolute;top:14px;right:14px;z-index:3;
+  font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;text-shadow:none;
+  padding:3px 9px;border-radius:var(--r-pill);background:var(--new);color:#1b1400;font-weight:700;
 }
+.size-cmp{display:flex;align-items:flex-end;gap:10px;height:78px;margin:6px 0 10px}
+.size-cmp figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.68rem;color:var(--text-3)}
+.orb{
+  display:block;border-radius:50%;
+  background:radial-gradient(circle at 32% 28%,var(--c1,#fff) 0,var(--c2,#7fa6ff) 35%,var(--c3,#1d2b66) 80%);
+  box-shadow:inset -3px -4px 8px rgba(0,0,0,.45),0 4px 12px rgba(0,0,0,.35);
+}
+.orb.earth{--c1:#e6f3ff;--c2:#3f82d6;--c3:#0e2a55}
 
-/* Selectores */
-.picker{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
-button{
-  font:inherit;color:var(--text);background:rgba(255,255,255,.08);
-  border:1px solid var(--line);border-radius:99px;padding:9px 18px;cursor:pointer;
-  transition:transform .15s,background .2s,border-color .2s;
-}
-button:hover{background:rgba(255,255,255,.16)}
-button:active{transform:scale(.97)}
-button[aria-pressed="true"]{background:var(--accent);color:#06101f;border-color:transparent}
-button.mini{padding:4px 10px;font-size:.85rem}
-button.primary{background:rgba(255,255,255,.12)}
+.planet-data .row:first-of-type{border-top:0}
+/* Foto de la NASA: imagen arriba y datos debajo, siempre en columna */
+.photo{margin:18px 0 0;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line);background:rgba(0,0,0,.25);display:flex;flex-direction:column}
+.photo-frame{aspect-ratio:4/3;background:#05060c;display:grid;place-items:center;overflow:hidden}
+.photo-frame img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-frame p{margin:0;padding:16px;text-align:center}
+.image-meta{display:flex;flex-direction:column;gap:10px;padding:12px 14px;font-size:.85rem;color:var(--text-2)}
+.image-meta .photo-title{overflow-wrap:anywhere;line-height:1.35}
+.image-meta .photo-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 
-/* Agujeros negros */
-.bh-head h3{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 4px}
-.bh-head p{margin:0 0 4px}
-.slider{margin:18px 0 6px}
-.slider label{display:flex;justify-content:space-between;color:var(--muted);font-size:.9rem;margin-bottom:6px}
-input[type="range"]{width:100%;accent-color:var(--accent)}
-.bh-visual{
-  position:relative;height:150px;margin:18px 0 4px;border-radius:16px;overflow:hidden;
-  background:radial-gradient(ellipse at 50% 50%,#0b1224 0%,#05060d 70%);border:1px solid var(--line);
-  display:flex;align-items:center;justify-content:center;
-}
-.bh-visual .disk{
-  position:absolute;border-radius:50%;
-  background:radial-gradient(circle,transparent 58%,rgba(255,215,160,.9) 62%,rgba(255,150,80,.5) 75%,transparent 80%);
-  transition:width .6s cubic-bezier(.2,.8,.2,1),height .6s cubic-bezier(.2,.8,.2,1);
-  filter:blur(.4px);
-}
-.bh-visual .hole{
-  position:absolute;border-radius:50%;background:#000;
-  transition:width .6s cubic-bezier(.2,.8,.2,1),height .6s cubic-bezier(.2,.8,.2,1);
-  box-shadow:0 0 0 1px rgba(255,255,255,.06);
-}
-.bh-visual .cap{position:absolute;bottom:8px;left:12px;font-size:.78rem;color:var(--muted)}
-.bh-link{font-size:.9rem}
-
-/* Planetas */
-.planet-layout{display:grid;gap:16px;grid-template-columns:1fr}
-@media (min-width:820px){.planet-layout{grid-template-columns:1.1fr 1fr}}
-.planet-image{
-  min-height:260px;border-radius:16px;overflow:hidden;background:rgba(255,255,255,.03);
-  border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
-}
-.planet-image img{width:100%;height:100%;max-height:420px;object-fit:cover;display:block}
-.image-meta{
-  display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;
-  padding:12px 14px;font-size:.85rem;color:var(--muted);width:100%;border-top:1px solid var(--line);
-}
-.image-meta span:last-child{display:flex;gap:10px;align-items:center}
-.planet-data h3{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 6px}
-
-/* APOD */
-.apod img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:14px;display:block;margin-bottom:14px}
-.apod h3{margin:0 0 6px;font-size:1.25rem;letter-spacing:-.01em}
+.apod{padding:18px}
+.apod img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:var(--r-md);display:block;margin-bottom:14px;box-shadow:var(--shadow-1)}
+.apod h3{margin:0 0 6px;font-size:1.3rem;letter-spacing:-.015em}
 .apod p{margin:0;font-size:.95rem}
 details{margin-top:10px}
-summary{cursor:pointer;color:var(--accent)}
-details p{margin-top:8px;color:var(--muted)}
+summary{cursor:pointer;color:var(--accent-strong);font-weight:550}
+details p{margin-top:8px;color:var(--text-2)}
 
-/* Notificaciones */
+/* Aviso flotante: aparece como material (escala + desenfoque), no solo con opacidad */
 .toast{
-  position:fixed;left:50%;bottom:24px;z-index:20;transform:translate(-50%,140%);
-  max-width:min(92vw,560px);padding:12px 18px;border-radius:16px;
-  background:var(--glass-strong);border:1px solid var(--line);
-  -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
-  box-shadow:0 20px 60px rgba(0,0,0,.45);
-  transition:transform .5s cubic-bezier(.2,.8,.2,1);
+  position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));z-index:40;
+  max-width:min(calc(100vw - 32px),560px);padding:12px 18px;border-radius:var(--r-md);
+  --glass-bg:rgba(16,19,34,.55);
+  opacity:0;transform:translate(-50%,24px) scale(.94);pointer-events:none;
+  transition:transform .5s var(--spring),opacity .3s var(--ease-out);
   font-size:.95rem;
 }
-.toast.show{transform:translate(-50%,0)}
-.notify-row{display:flex;justify-content:center;margin-top:14px}
+.toast.show{opacity:1;transform:translate(-50%,0) scale(1)}
 
-footer{margin-top:48px;text-align:center;color:var(--muted);font-size:.85rem;padding-bottom:24px}
-footer p{margin:6px 0}
+footer{position:relative;z-index:2;max-width:var(--maxw);margin:64px auto 0;padding:0 16px 32px}
+.footer-card{border-radius:var(--r-lg);padding:20px 22px;color:var(--text-2);font-size:.88rem}
+.footer-card p{margin:6px 0}
+.footer-card h2{font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px;color:var(--text-2)}
+.sources{display:flex;flex-wrap:wrap;gap:6px 14px;list-style:none;margin:0 0 10px;padding:0}
 
-@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* Entrada de secciones al hacer scroll */
+.reveal{opacity:0;transform:translateY(32px) scale(.985);transition:opacity .9s var(--ease-out),transform .9s var(--ease-out)}
+.reveal.in{opacity:1;transform:none}
 
-@media (max-width:520px){
-  header.hero{padding-top:8vh}
-  .big{font-size:1.9rem}
-  .bh-head h3,.planet-data h3{font-size:1.35rem}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}}
+@keyframes materialize{from{opacity:0;transform:translateY(16px) scale(.96);-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(115,230,184,.55)}70%{box-shadow:0 0 0 9px rgba(115,230,184,0)}100%{box-shadow:0 0 0 0 rgba(115,230,184,0)}}
+
+@media (max-width:560px){
+  .hero{padding-top:6vh;min-height:auto}
+  .chip{min-width:calc(50% - 5px)}
+  .big{font-size:2rem}
   .card{padding:18px}
+  .obj-head h3{font-size:1.4rem}
+  .gx-hud{padding:14px 14px 12px}
+  .gx-hud h2{font-size:1.25rem}
+  #gx-hud-note{display:none}
+  .gx-facts{margin:8px 0;grid-template-columns:minmax(0,1fr)}
+  .gx-facts .row{font-size:.78rem;padding:5px 0}
+  .gx-facts .row span:first-child{max-width:45%}
+  .stage-hint{max-width:calc(100% - 110px);font-size:.7rem}
+  .seg button{padding:7px 11px;font-size:.86rem}
+  .iss-wrap{flex-direction:row-reverse}
+  #iss-globe{width:76px;height:76px}
 }
+
+/* Accesibilidad: movimiento reducido → sin resortes, inclinaciones ni paralaje; solo fundidos */
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
-  .card,.card:hover,.bar i,.bh-visual .disk,.bh-visual .hole,.toast{animation:none;transition:none;transform:none}
-  .toast.show{transform:translate(-50%,0)}
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important}
+  .card,.chip,button,.seg-thumb,.ruler-mark,.bar i{transition:opacity .2s,background .2s,color .2s!important;transform:none!important}
+  .reveal{transform:none;transition:opacity .3s}
+  .toast{transform:translate(-50%,0)!important;transition:opacity .2s}
+  .live-dot{animation:none}
 }
+/* Transparencia reducida → superficies sólidas, sin desenfoque */
 @media (prefers-reduced-transparency:reduce){
-  .card,nav{background:var(--glass-strong);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .glass,.toast,.stage-hint{background:var(--glass-solid)!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+  .glass::before{display:none}
+}
+@media (prefers-contrast:more){
+  :root{--glass-border:rgba(255,255,255,.5);--text-2:#e8edff;--text-3:#cfd7f5;--line:rgba(255,255,255,.3)}
+  .glass{background:var(--glass-solid)}
+}
+/* Sin soporte de backdrop-filter: más opaco para que el texto se lea */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .glass{background:var(--glass-tint),rgba(16,19,36,.86)}
 }
 </style>
 </head>
 <body>
 <canvas id="galaxy" aria-hidden="true"></canvas>
 <div class="veil" aria-hidden="true"></div>
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
 
-<nav aria-label="Secciones">
-  <div class="inner">
-    <a href="#en-vivo">En vivo</a>
-    <a href="#alertas">Alertas</a>
-    <a href="#descubrimientos" id="disc-link">Descubrimientos<span class="pill" id="disc-count" hidden></span></a>
-    <a href="#agujeros-negros">Agujeros negros</a>
-    <a href="#planetas">Planetas</a>
-    <a href="#imagen-dia">Imagen del día</a>
+<nav class="topbar" aria-label="Secciones">
+  <div class="topbar-inner glass">
+    <a class="brand" href="#inicio"><span class="brand-orb" aria-hidden="true"></span>Cosmos</a>
+    <div class="nav-links" id="nav-links">
+      <a href="#en-vivo">En vivo</a>
+      <a href="#alertas">Alertas</a>
+      <a href="#descubrimientos" id="disc-link">Planetas nuevos<span class="pill" id="disc-count" hidden></span></a>
+      <a href="#galaxias">Galaxias</a>
+      <a href="#estrellas">Sol y estrellas</a>
+      <a href="#agujeros-negros">Agujeros negros</a>
+      <a href="#planetas">Sistema Solar</a>
+      <a href="#imagen-dia">Imagen del día</a>
+    </div>
   </div>
 </nav>
 
-<main>
-  <header class="hero">
+<main id="contenido">
+  <header class="hero" id="inicio">
+    <p class="eyebrow glass"><span class="live-dot" aria-hidden="true"></span>Datos en tiempo real · NASA · NOAA · ISS</p>
     <h1>Cosmos en vivo</h1>
-    <p class="lead">Datos reales de la NASA, la NOAA y la Estación Espacial Internacional, en una sola pantalla.</p>
+    <p class="lead">El espacio de hoy en una sola pantalla: la Estación Espacial, el clima del Sol, planetas recién descubiertos y un universo en 3D que puedes tocar.</p>
     <div class="chips" aria-label="Resumen en vivo">
-      <a href="#en-vivo" class="chip"><small>ISS · altitud</small><b id="sum-alt">…</b></a>
-      <a href="#en-vivo" class="chip"><small>Índice Kp</small><b id="sum-kp">…</b></a>
-      <a href="#en-vivo" class="chip"><small>Rayos X</small><b id="sum-xray">…</b></a>
-      <a href="#en-vivo" class="chip"><small>Asteroides hoy</small><b id="sum-neo">…</b></a>
-      <a href="#descubrimientos" class="chip"><small>Planetas recientes</small><b id="sum-disc">…</b></a>
+      <a href="#en-vivo" class="chip glass"><small>ISS · altitud</small><b id="sum-alt">…</b></a>
+      <a href="#en-vivo" class="chip glass"><small>Índice Kp</small><b id="sum-kp">…</b></a>
+      <a href="#en-vivo" class="chip glass"><small>Rayos X</small><b id="sum-xray">…</b></a>
+      <a href="#en-vivo" class="chip glass"><small>Asteroides hoy</small><b id="sum-neo">…</b></a>
+      <a href="#descubrimientos" class="chip glass"><small>Planetas recientes</small><b id="sum-disc">…</b></a>
     </div>
-    <button id="refresh" type="button">Actualizar ahora</button>
-    <div class="notify-row">
-      <button id="notify-btn" type="button" class="mini" hidden>Activar avisos del navegador</button>
+    <div class="hero-actions">
+      <button id="refresh" type="button" class="primary">Actualizar ahora</button>
+      <button id="explore-mw" type="button" class="glass">Explorar galaxias</button>
+      <button id="notify-btn" type="button" class="glass" hidden>Activar avisos</button>
     </div>
+    <p class="hint" id="hero-hint">Arrastra el fondo para girar la Vía Láctea</p>
   </header>
 
   <section id="en-vivo" aria-labelledby="t-vivo">
-    <h2 class="section-title" id="t-vivo">En vivo</h2>
-    <p class="section-lead">La ISS, el Sol y los asteroides que pasan cerca de la Tierra, actualizados solos.</p>
+    <div class="section-head">
+      <p class="kicker">Actualizado solo</p>
+      <h2 class="section-title" id="t-vivo">En vivo</h2>
+      <p class="section-lead">La ISS cada 5 segundos, el Sol cada 5 minutos y los asteroides que pasan hoy cerca de la Tierra.</p>
+    </div>
     <div class="grid">
-      <article class="card">
-        <h2>Estación Espacial Internacional</h2>
-        <p class="big" id="iss-alt">…</p>
+      <article class="card glass tilt">
+        <h3 class="card-title">Estación Espacial Internacional</h3>
+        <div class="iss-wrap">
+          <div>
+            <p class="big" id="iss-alt">…</p>
+            <p class="muted" style="margin:0;font-size:.85rem">de altitud sobre la Tierra</p>
+          </div>
+          <canvas id="iss-globe" width="192" height="192" role="img" aria-label="Globo terrestre con la posición actual de la ISS"></canvas>
+        </div>
         <div class="row"><span>Latitud</span><span id="iss-lat">…</span></div>
         <div class="row"><span>Longitud</span><span id="iss-lon">…</span></div>
         <div class="row"><span>Velocidad</span><span id="iss-vel">…</span></div>
         <div class="row"><span>Iluminación</span><span id="iss-vis">…</span></div>
-        <p class="status" id="iss-status">Conectando…</p>
+        <p class="status loading" id="iss-status">Conectando…</p>
       </article>
 
-      <article class="card">
-        <h2>Clima espacial (NOAA)</h2>
+      <article class="card glass tilt">
+        <h3 class="card-title">Clima espacial (NOAA)</h3>
         <p class="big" id="kp">…</p>
-        <div class="bar"><i id="kp-bar"></i></div>
+        <p class="muted" style="margin:0;font-size:.85rem">índice Kp planetario (0 a 9)</p>
+        <div class="bar" role="presentation"><i id="kp-bar"></i></div>
         <div class="row"><span>Nivel geomagnético</span><span id="kp-level">…</span></div>
         <div class="row"><span>Rayos X del Sol</span><span id="xray">…</span></div>
         <div class="row"><span>Última medición</span><span id="xray-time">…</span></div>
-        <p class="status" id="sw-status">Conectando…</p>
+        <p class="status loading" id="sw-status">Conectando…</p>
       </article>
 
-      <article class="card">
-        <h2>Asteroides hoy</h2>
+      <article class="card glass tilt">
+        <h3 class="card-title">Asteroides hoy</h3>
         <p class="big" id="neo-count">…</p>
+        <p class="muted" style="margin:0;font-size:.85rem">acercamientos registrados hoy</p>
         <div class="row"><span>Potencialmente peligrosos</span><span id="neo-hazard">…</span></div>
         <div class="row"><span>Más cercano</span><span id="neo-name">…</span></div>
         <div class="row"><span>Distancia</span><span id="neo-dist">…</span></div>
         <div class="row"><span>En distancias lunares</span><span id="neo-lunar">…</span></div>
-        <p class="status" id="neo-status">Conectando…</p>
+        <p class="status loading" id="neo-status">Conectando…</p>
       </article>
     </div>
   </section>
 
   <section id="alertas" aria-labelledby="t-alertas">
-    <h2 class="section-title" id="t-alertas">Alertas espaciales</h2>
-    <p class="section-lead">Avisos oficiales de la NOAA sobre tormentas geomagnéticas, radiación y comunicaciones por radio. Si activas los avisos del navegador, te avisamos cuando aparezca uno nuevo.</p>
-    <div class="card">
+    <div class="section-head">
+      <p class="kicker">NOAA SWPC</p>
+      <h2 class="section-title" id="t-alertas">Alertas espaciales</h2>
+      <p class="section-lead">Avisos oficiales sobre tormentas geomagnéticas, radiación y radio. Si activas los avisos, te avisamos cuando aparezca uno nuevo.</p>
+    </div>
+    <div class="card glass">
       <ul class="alerts" id="alerts" aria-live="polite"><li class="muted">Cargando avisos…</li></ul>
-      <p class="status" id="alerts-status">Conectando…</p>
+      <p class="status loading" id="alerts-status">Conectando…</p>
     </div>
   </section>
 
   <section id="descubrimientos" aria-labelledby="t-disc">
-    <h2 class="section-title" id="t-disc">Nuevos planetas</h2>
-    <p class="section-lead">Los planetas confirmados más recientes del Archivo de Exoplanetas de la NASA. Una etiqueta "Nuevo" aparece cuando un descubrimiento no lo habías visto antes.</p>
+    <div class="section-head">
+      <p class="kicker">NASA Exoplanet Archive</p>
+      <h2 class="section-title" id="t-disc">Planetas recién descubiertos</h2>
+      <p class="section-lead">Los planetas confirmados más recientes, con su tamaño junto a la Tierra. La etiqueta "Nuevo" marca los que no habías visto.</p>
+    </div>
     <div class="grid" id="discoveries"><p class="muted">Cargando descubrimientos…</p></div>
-    <p class="status" id="disc-status">Conectando…</p>
+    <p class="status loading" id="disc-status">Conectando…</p>
+  </section>
+
+  <section id="galaxias" aria-labelledby="t-gx">
+    <div class="section-head">
+      <p class="kicker">Viaje en 3D</p>
+      <h2 class="section-title" id="t-gx">Entra a otras galaxias</h2>
+      <p class="section-lead">El fondo de la página es una escena 3D con cuatro galaxias de formas distintas. Elige una y la cámara viaja hasta ella; luego arrastra para girar y usa la rueda o el pellizco para acercarte.</p>
+    </div>
+    <div class="grid" id="gx-list"></div>
+    <p class="note">Modelos procedurales e ilustrativos; las distancias entre galaxias en la escena no están a escala.</p>
+  </section>
+
+  <section id="estrellas" aria-labelledby="t-st">
+    <div class="section-head">
+      <p class="kicker">Comparación a escala</p>
+      <h2 class="section-title" id="t-st">El Sol y sus parientes</h2>
+      <p class="section-lead">El Sol en 3D, con granulación y manchas, junto a estrellas parecidas y algunas de contraste. El tamaño y el color salen del radio y la temperatura reales.</p>
+    </div>
+    <div class="card glass">
+      <p class="seg-label" id="st-picker-label">Estrellas</p>
+      <div class="seg" id="st-picker" role="group" aria-labelledby="st-picker-label"></div>
+      <div id="st-live-wrap" hidden>
+        <p class="seg-label" id="st-live-label">Anfitrionas de exoplanetas tipo Sol (en vivo)</p>
+        <div class="seg" id="st-live" role="group" aria-labelledby="st-live-label"></div>
+      </div>
+      <div class="split">
+        <div class="stage" id="st-stage" tabindex="0" role="img" aria-label="El Sol y la estrella elegida en 3D a escala. Arrastra o usa las flechas para girar; rueda, pellizco o las teclas + y − para acercar.">
+          <canvas id="st-canvas"></canvas>
+          <div class="stage-labels" id="st-labels" aria-hidden="true"></div>
+          <span class="stage-hint glass">Arrastra para girar · rueda o pellizco para acercar</span>
+          <div class="stage-tools">
+            <button type="button" class="icon glass" data-zoom="st" data-dir="in" aria-label="Acercar">+</button>
+            <button type="button" class="icon glass" data-zoom="st" data-dir="out" aria-label="Alejar">−</button>
+          </div>
+        </div>
+        <div>
+          <div class="obj-head">
+            <span class="tag" id="st-type">…</span>
+            <h3 id="st-name">…</h3>
+          </div>
+          <div class="row"><span>Radio</span><span id="st-radius">…</span></div>
+          <div class="row"><span>Temperatura</span><span id="st-temp">…</span></div>
+          <div class="row"><span>Masa</span><span id="st-mass">…</span></div>
+          <div class="row"><span>Distancia</span><span id="st-dist">…</span></div>
+          <div class="row"><span>Frente al Sol</span><span id="st-ratio">…</span></div>
+          <div class="row"><span>Volumen</span><span id="st-volume">…</span></div>
+          <p class="status"><a id="st-link" href="#" target="_blank" rel="noopener">Ver ficha en SIMBAD</a></p>
+          <p class="status" id="st-status"></p>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section id="agujeros-negros" aria-labelledby="t-bh">
-    <h2 class="section-title" id="t-bh">Agujeros negros</h2>
-    <p class="section-lead">Elige un objeto conocido o mueve el control para explorar cualquier masa. Los cálculos usan las fórmulas de Schwarzschild y Hawking.</p>
-    <div class="card">
-      <div class="picker" id="bh-picker" role="group" aria-label="Objeto"></div>
-      <div class="bh-head">
-        <h3 id="bh-name">…</h3>
-        <p class="muted" id="bh-type"></p>
-        <p class="muted" id="bh-note"></p>
+    <div class="section-head">
+      <p class="kicker">Relatividad general</p>
+      <h2 class="section-title" id="t-bh">Agujeros negros</h2>
+      <p class="section-lead">Trazado de rayos de un agujero negro de Schwarzschild: la luz se curva, el disco tiene grosor y el lado que se acerca brilla más por efecto Doppler. Elige un objeto o mueve la masa.</p>
+    </div>
+    <div class="card glass">
+      <div class="seg" id="bh-picker" role="group" aria-label="Objeto"></div>
+      <div class="split">
+        <div>
+          <div class="stage" id="bh-stage" tabindex="0" role="img" aria-label="Simulación 3D de un agujero negro con disco de acreción y lente gravitacional. Arrastra o usa las flechas para girar; rueda, pellizco o + y − para acercar.">
+            <canvas id="bh-canvas"></canvas>
+            <span class="stage-hint glass">Tamaño normalizado · arrastra y haz zoom</span>
+            <div class="stage-tools">
+              <button type="button" class="icon glass" data-zoom="bh" data-dir="in" aria-label="Acercar">+</button>
+              <button type="button" class="icon glass" data-zoom="bh" data-dir="out" aria-label="Alejar">−</button>
+            </div>
+          </div>
+          <p class="seg-label" style="margin-top:18px">Tamaño del horizonte (escala logarítmica, km)</p>
+          <div class="ruler" id="bh-ruler" aria-hidden="true">
+            <div class="ruler-track"></div>
+            <div class="ruler-mark" id="bh-mark"></div>
+          </div>
+          <div class="ruler-legend" aria-hidden="true"><span>1000 km</span><span>100 000 millones de km</span></div>
+        </div>
+        <div>
+          <div class="obj-head">
+            <span class="tag" id="bh-type">…</span>
+            <h3 id="bh-name">…</h3>
+            <p class="muted" id="bh-note"></p>
+          </div>
+          <div class="slider">
+            <label for="bh-mass"><span>Masa</span><output id="bh-mass-out" for="bh-mass">…</output></label>
+            <input type="range" id="bh-mass" min="0" max="11" step="0.01" value="0" aria-describedby="bh-mass-out">
+          </div>
+          <div class="row"><span>Distancia</span><span id="bh-dist">…</span></div>
+          <div class="row"><span>Radio de Schwarzschild</span><span id="bh-rs">…</span></div>
+          <div class="row"><span>Diámetro del horizonte</span><span id="bh-diam">…</span></div>
+          <div class="row"><span>Frente al Sol</span><span id="bh-sun">…</span></div>
+          <div class="row"><span>Frente a la órbita Tierra–Sol</span><span id="bh-au">…</span></div>
+          <div class="row"><span>Cabe en</span><span id="bh-fits">…</span></div>
+          <div class="row"><span>Disco interno (aprox.)</span><span id="bh-disk-temp">…</span></div>
+          <div class="row"><span>Temperatura de Hawking</span><span id="bh-temp">…</span></div>
+          <div class="row"><span>Comparación</span><span id="bh-cmb">…</span></div>
+          <p class="status"><a id="bh-link" href="#" target="_blank" rel="noopener">Ver ficha en SIMBAD</a></p>
+          <p class="note">El disco real emite en ultravioleta o rayos X; los colores son una representación visible de su temperatura relativa.</p>
+        </div>
       </div>
-      <div class="slider">
-        <label for="bh-mass"><span>Masa</span><span id="bh-mass-out">…</span></label>
-        <input type="range" id="bh-mass" min="0" max="11" step="0.01" value="0" aria-describedby="bh-mass-out">
-      </div>
-      <div class="bh-visual" aria-hidden="true">
-        <div class="disk" id="bh-disk"></div>
-        <div class="hole" id="bh-hole"></div>
-        <span class="cap">Escala relativa del horizonte de sucesos</span>
-      </div>
-      <div class="row"><span>Distancia</span><span id="bh-dist">…</span></div>
-      <div class="row"><span>Radio de Schwarzschild</span><span id="bh-rs">…</span></div>
-      <div class="row"><span>Diámetro del horizonte</span><span id="bh-diam">…</span></div>
-      <div class="row"><span>Frente al Sol</span><span id="bh-sun">…</span></div>
-      <div class="row"><span>Frente a la órbita Tierra–Sol</span><span id="bh-au">…</span></div>
-      <div class="row"><span>Temperatura de Hawking</span><span id="bh-temp">…</span></div>
-      <div class="row"><span>Comparación</span><span id="bh-cmb">…</span></div>
-      <p class="status bh-link"><a id="bh-link" href="#" target="_blank" rel="noopener">Ver ficha en SIMBAD</a></p>
     </div>
   </section>
 
   <section id="planetas" aria-labelledby="t-pl">
-    <h2 class="section-title" id="t-pl">Planetas del Sistema Solar</h2>
-    <p class="section-lead">Datos físicos aproximados y una fotografía real de la biblioteca de imágenes de la NASA.</p>
-    <div class="card">
-      <div class="picker" id="pl-picker" role="group" aria-label="Planeta"></div>
-      <div class="planet-layout">
-        <div class="planet-image" id="pl-image"><p class="muted">Cargando…</p></div>
+    <div class="section-head">
+      <p class="kicker">Sistema Solar</p>
+      <h2 class="section-title" id="t-pl">Planetas en 3D</h2>
+      <p class="section-lead">Cada planeta con su eje inclinado (línea punteada), rotación, relieve y atmósfera generados por código, más exoplanetas del tamaño de la Tierra en la zona habitable de su estrella. Pasa al modo comparación para verlos a escala real.</p>
+    </div>
+    <div class="card glass">
+      <div class="toolbar">
+        <div>
+          <p class="seg-label" id="pl-picker-label">Sistema Solar</p>
+          <div class="seg" id="pl-picker" role="group" aria-labelledby="pl-picker-label"></div>
+          <p class="seg-label" id="pl-exo-label">Exoplanetas tipo Tierra</p>
+          <div class="seg" id="pl-exo-picker" role="group" aria-labelledby="pl-exo-label"></div>
+        </div>
+        <div>
+          <p class="seg-label" id="pl-mode-label">Vista</p>
+          <div class="seg" id="pl-mode" role="group" aria-labelledby="pl-mode-label">
+            <button type="button" data-mode="single" aria-pressed="true">Planeta</button>
+            <button type="button" data-mode="compare" aria-pressed="false">Comparar tamaños</button>
+          </div>
+        </div>
+      </div>
+      <div class="split">
+        <div>
+          <div class="stage" id="pl-stage" tabindex="0" role="img" aria-label="Planeta en 3D. Arrastra o usa las flechas para girar; rueda, pellizco o + y − para acercar.">
+            <canvas id="pl-canvas"></canvas>
+            <div class="stage-labels" id="pl-labels" aria-hidden="true"></div>
+            <span class="stage-hint glass" id="pl-hint">Arrastra para girar · rueda o pellizco para acercar</span>
+            <div class="stage-tools">
+              <button type="button" class="icon glass" data-zoom="pl" data-dir="in" aria-label="Acercar">+</button>
+              <button type="button" class="icon glass" data-zoom="pl" data-dir="out" aria-label="Alejar">−</button>
+            </div>
+          </div>
+          <p class="note" id="pl-compare-note"></p>
+        </div>
         <div class="planet-data">
-          <h3 id="pl-name">…</h3>
+          <div class="obj-head"><span class="tag" id="pl-kind">…</span><h3 id="pl-name">…</h3></div>
+          <p class="note" id="pl-exo-note" hidden></p>
           <div class="row"><span>Radio</span><span id="pl-radius">…</span></div>
-          <div class="row"><span>Masa</span><span id="pl-mass">…</span></div>
-          <div class="row"><span>Lunas conocidas</span><span id="pl-moons">…</span></div>
-          <div class="row"><span>Temperatura media</span><span id="pl-temp">…</span></div>
-          <div class="row"><span>Distancia al Sol</span><span id="pl-dist">…</span></div>
-          <div class="row"><span>Duración del día</span><span id="pl-day">…</span></div>
+          <div class="row"><span id="pl-l-mass">Masa</span><span id="pl-mass">…</span></div>
+          <div class="row"><span id="pl-l-moons">Lunas conocidas</span><span id="pl-moons">…</span></div>
+          <div class="row"><span id="pl-l-temp">Temperatura media</span><span id="pl-temp">…</span></div>
+          <div class="row"><span id="pl-l-dist">Distancia al Sol</span><span id="pl-dist">…</span></div>
+          <div class="row"><span id="pl-l-day">Duración del día</span><span id="pl-day">…</span></div>
+          <div class="row"><span>Inclinación del eje</span><span id="pl-tilt">…</span></div>
+          <div class="photo" id="pl-image"><div class="photo-frame"><p class="muted">Cargando foto…</p></div></div>
         </div>
       </div>
     </div>
   </section>
 
   <section id="imagen-dia" aria-labelledby="t-apod">
-    <h2 class="section-title" id="t-apod">Imagen astronómica del día</h2>
-    <p class="section-lead">La imagen destacada de la NASA cada día, con su explicación.</p>
-    <article class="card apod">
+    <div class="section-head">
+      <p class="kicker">NASA APOD</p>
+      <h2 class="section-title" id="t-apod">Imagen astronómica del día</h2>
+      <p class="section-lead">La imagen destacada de la NASA cada día, con su explicación.</p>
+    </div>
+    <article class="card glass apod">
       <div id="apod-body"><p class="muted">Cargando…</p></div>
-      <p class="status" id="apod-status"></p>
+      <p class="status loading" id="apod-status">Conectando…</p>
     </article>
   </section>
-
-  <footer>
-    <p>Última actualización: <span id="last">—</span></p>
-    <p>
-      Fuentes:
-      <a href="https://api.nasa.gov" target="_blank" rel="noopener">NASA Open APIs</a> ·
-      <a href="https://images.nasa.gov" target="_blank" rel="noopener">NASA Images</a> ·
-      <a href="https://exoplanetarchive.ipac.caltech.edu" target="_blank" rel="noopener">Exoplanet Archive</a> ·
-      <a href="https://www.swpc.noaa.gov/products-and-data" target="_blank" rel="noopener">NOAA SWPC</a> ·
-      <a href="https://wheretheiss.at/w/developer" target="_blank" rel="noopener">Where The ISS At</a> ·
-      <a href="https://simbad.cds.unistra.fr" target="_blank" rel="noopener">SIMBAD</a>
-    </p>
-  </footer>
 </main>
 
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<footer>
+  <div class="footer-card glass">
+    <h2>Fuentes de datos</h2>
+    <ul class="sources">
+      <li><a href="https://api.nasa.gov" target="_blank" rel="noopener">NASA Open APIs (APOD, NeoWs)</a></li>
+      <li><a href="https://images.nasa.gov" target="_blank" rel="noopener">NASA Image Library</a></li>
+      <li><a href="https://exoplanetarchive.ipac.caltech.edu" target="_blank" rel="noopener">NASA Exoplanet Archive</a></li>
+      <li><a href="https://www.swpc.noaa.gov/products-and-data" target="_blank" rel="noopener">NOAA SWPC</a></li>
+      <li><a href="https://wheretheiss.at/w/developer" target="_blank" rel="noopener">Where The ISS At</a></li>
+      <li><a href="https://simbad.cds.unistra.fr" target="_blank" rel="noopener">SIMBAD (CDS)</a></li>
+    </ul>
+    <p>Última actualización: <span id="last">—</span></p>
+    <p>Las escenas 3D (galaxias, Sol, planetas, agujero negro) son modelos procedurales hechos con Three.js; los números de las tablas son datos reales aproximados.</p>
+  </div>
+</footer>
+
+<!-- Interfaz al explorar una galaxia -->
+<div class="gx-hint glass" id="gx-hint" hidden>Arrastra para girar · rueda o pellizco para acercar · Esc para salir</div>
+<div class="gx-hud glass" id="gx-hud" role="dialog" aria-modal="false" aria-labelledby="gx-hud-name" hidden>
+  <div class="gx-hud-top">
+    <div>
+      <span class="tag" id="gx-hud-kind">…</span>
+      <h2 id="gx-hud-name" tabindex="-1">…</h2>
+    </div>
+    <button type="button" id="gx-exit" class="primary">Salir</button>
+  </div>
+  <p id="gx-hud-note"></p>
+  <div class="gx-facts">
+    <div class="row"><span>Distancia</span><span id="gx-hud-dist">…</span></div>
+    <div class="row"><span>Diámetro</span><span id="gx-hud-diam">…</span></div>
+    <div class="row"><span>Estrellas</span><span id="gx-hud-stars">…</span></div>
+    <div class="row"><span>Agujero negro</span><span id="gx-hud-bh">…</span></div>
+  </div>
+  <div class="gx-hud-tools">
+    <div class="seg" id="gx-hud-picker" role="group" aria-label="Ir a otra galaxia"></div>
+    <div class="zoom">
+      <button type="button" class="icon" id="gx-zoom-in" aria-label="Acercar">+</button>
+      <button type="button" class="icon" id="gx-zoom-out" aria-label="Alejar">−</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast glass" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
 <script src="data.js"></script>
+<script src="viewer.js"></script>
 <script src="galaxy.js"></script>
+<script src="blackhole.js"></script>
+<script src="planets3d.js"></script>
+<script src="stars3d.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
