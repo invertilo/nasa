@@ -16,7 +16,8 @@ module.exports = async function handler(req, res){
   }
 
   const upstream = await fetch(target.toString());
-  res.setHeader('Cache-Control', 'public, s-maxage=3600');
+  // Solo se guardan en caché las respuestas correctas: un error no debe quedar fijo
+  res.setHeader('Cache-Control', upstream.ok ? 'public, s-maxage=3600' : 'no-store');
   res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json');
   res.status(upstream.status).send(await upstream.text());
 };

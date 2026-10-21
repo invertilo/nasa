@@ -1028,6 +1028,89 @@ function refreshAll(){
   loadAPOD();
 }
 
+/* ---------- Datos curiosos del día ---------- */
+
+const DAY_MS = 86400000;
+const dayIndex = () => Math.floor(Date.now() / DAY_MS);
+
+// Elige `count` datos distintos del pool, cambiando cada día (el pool es de 11 elementos)
+function pickDaily(pool, count){
+  const base = dayIndex() * 3;
+  const out = [];
+  for (let i = 0; i < count; i++) out.push(pool[(base + i * 5) % pool.length]);
+  return out;
+}
+
+const dailyCat = (cat) => `<span class="chip-tag">${esc(cat)}</span>`;
+
+function dailyCard(fact, i){
+  return `<article class="card daily-card" style="--i:${i}">
+    ${dailyCat(fact.cat)}
+    <h3>${esc(fact.title)}</h3>
+    <p>${esc(fact.text)}</p>
+  </article>`;
+}
+
+// Dato en vivo: un exoplaneta del tamaño de la Tierra que recibe luz parecida, tomado del Archivo
+async function liveRadiationFacts(){
+  const query = 'select top 30 pl_name,hostname,disc_year,pl_rade,pl_insol,pl_eqt,sy_dist from pscomppars where pl_rade between 0.8 and 1.6 and pl_insol between 0.3 and 2 and disc_year >= 2015 order by disc_year desc';
+  const rows = await fetchJSON(tapURL(query));
+  if (!rows.length) return [];
+  const d = dayIndex();
+  const picks = [rows[d % rows.length], rows[(d + 7) % rows.length]];
+  const unique = picks[0] === picks[1] ? [picks[0]] : picks;
+  return unique.map((r) => {
+    const eqt = r.pl_eqt != null
+      ? `una temperatura de equilibrio de unos ${num(r.pl_eqt - 273)} °C (sin atmósfera que la modifique)`
+      : 'una temperatura de equilibrio que el Archivo no publica';
+    return {
+      cat: 'radiación',
+      title: `${r.pl_name}: cuánta luz recibe`,
+      text: `Recibe ${num(r.pl_insol, 2)} veces la energía que la Tierra recibe del Sol, con ${eqt}. Mide ${num(r.pl_rade, 2)} veces el radio de la Tierra y está a unos ${num(r.sy_dist * LY_PER_PC)} años luz. Sin traje, la falta de oxígeno te dejaría inconsciente en segundos; la radiación y la temperatura decidirían el resto, y no hay una cifra fiable para este mundo.`,
+    };
+  });
+}
+
+async function loadDaily(){
+  const curated = pickDaily(DAILY_POOL, 3);
+  $('daily-date').textContent = new Date().toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' });
+  try{
+    const live = await liveRadiationFacts();
+    const facts = [...live, ...curated].slice(0, 5);
+    $('daily').innerHTML = facts.map(dailyCard).join('');
+    setState('daily-status', live.length ? `Dos datos vienen del Archivo de Exoplanetas · ${stamp()}` : 'Datos curados de hoy', 'ok');
+  }catch(e){
+    // Sin conexión al Archivo: se muestran cinco datos curados, sin error en rojo
+    const facts = pickDaily(DAILY_POOL, 5);
+    $('daily').innerHTML = facts.map(dailyCard).join('');
+    setState('daily-status', 'Datos curados de hoy. Los datos en vivo del Archivo no están disponibles ahora.', 'ok');
+  }
+}
+
+function renderLifeWorlds(){
+  $('life-grid').innerHTML = LIFE_WORLDS.map((w, i) => `
+    <article class="card life-card" style="--i:${i}">
+      <h3>${esc(w.name)} <span class="muted">· ${esc(w.body)}</span></h3>
+      <p>${esc(w.why)}</p>
+      <div class="row"><span>Estado</span><span>${esc(w.status)}</span></div>
+    </article>`).join('');
+}
+
+// Vuelve a pedir las tarjetas que muestran un error (el estado tiene la clase .err)
+function retryFailedCards(){
+  const retries = [
+    ['iss-status', loadISS],
+    ['sw-status', loadSpaceWeather],
+    ['alerts-status', loadAlerts],
+    ['neo-status', loadNEO],
+    ['disc-status', loadDiscoveries],
+    ['apod-status', loadAPOD],
+  ];
+  retries.forEach(([id, load]) => {
+    if ($(id).classList.contains('err')) Promise.resolve().then(load).catch(() => {});
+  });
+}
+
 function init(){
   initNotifyButton();
   initPressFeedback();
@@ -1059,6 +1142,12 @@ function init(){
 
   refreshAll();
   loadSunLikeHosts();
+  renderLifeWorlds();
+  loadDaily();
+  setInterval(loadDaily, 60 * 60 * 1000);
+  // Reintento automático: cualquier tarjeta en error se vuelve a cargar cada 30 s,
+  // sin esperar al ciclo largo ni obligar a recargar la página
+  setInterval(retryFailedCards, 30 * 1000);
   setInterval(loadISS, CONFIG.intervals.iss);
   setInterval(() => { loadSpaceWeather(); loadAlerts().catch(() => {}); }, CONFIG.intervals.space);
   setInterval(() => {

@@ -17,7 +17,8 @@ module.exports = async function handler(req, res){
   params.set('api_key', key);
 
   const upstream = await fetch(`https://api.nasa.gov/${route}?${params}`);
-  res.setHeader('Cache-Control', 'public, s-maxage=900');
+  // Solo se guardan en caché las respuestas correctas: un error no debe quedar fijo
+  res.setHeader('Cache-Control', upstream.ok ? 'public, s-maxage=900' : 'no-store');
   res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json');
   res.status(upstream.status).send(await upstream.text());
 };

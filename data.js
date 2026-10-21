@@ -112,3 +112,28 @@ const EXO_EARTHS = [
   { id: 'teegardenb', name: 'Teegarden b', radiusEarth: 1.02, radiusEst: true, periodDays: 4.9, distanceLy: 12.5, star: 'Estrella de Teegarden (enana roja M7)', starTempK: 2904, tiltDeg: 0, note: 'Uno de los planetas con mayor índice de similitud con la Tierra.', look: { ocean: 0.58, ice: 0.82, cloud: 0.4, land: [0.33, 0.36, 0.22], seed: 21.4 }, search: 'Teegarden star planet' },
   { id: 'kepler442b', name: 'Kepler-442 b', radiusEarth: 1.34, periodDays: 112.3, distanceLy: 1206, star: 'Kepler-442 (enana naranja K)', starTempK: 4402, tiltDeg: 0, note: 'Supertierra en la zona habitable de una estrella naranja, más estable que una enana roja.', look: { ocean: 0.48, ice: 0.83, cloud: 0.5, land: [0.28, 0.38, 0.18], seed: 25.1 }, search: 'Kepler-442b' },
 ];
+
+// Datos curiosos para la rotación diaria. Cifras aproximadas de misiones y estudios públicos.
+// Cada dato tiene una categoría: radiación, habitabilidad, vida o curiosidad.
+const DAILY_POOL = [
+  { cat: 'radiación', title: 'Radiación en Marte', text: 'En la superficie de Marte, el rover Curiosity midió cerca de 0,6 milisieverts al día. El promedio de la Tierra es de unos 2,4 milisieverts al año, así que en Marte se recibe casi 100 veces más por día.' },
+  { cat: 'radiación', title: 'Llamaradas en una enana roja', text: 'Próxima b recibe unas 0,65 veces la luz que la Tierra, pero su estrella lanza llamaradas que pueden multiplicar la radiación ultravioleta y de rayos X durante minutos u horas.' },
+  { cat: 'radiación', title: 'El escudo de la Tierra', text: 'El campo magnético y la atmósfera de la Tierra filtran buena parte de la radiación cósmica. Sin ozono, la luz ultravioleta en la superficie sería mucho más intensa.' },
+  { cat: 'habitabilidad', title: 'Venus, un horno', text: 'La superficie de Venus alcanza unos 465 °C, más que Mercurio, aunque Mercurio está más cerca del Sol. Su atmósfera es unas 92 veces más densa que la de la Tierra.' },
+  { cat: 'habitabilidad', title: '¿Cuánto durarías en otro mundo?', text: 'Sin traje, un humano pierde la consciencia en unos 10 a 15 segundos por falta de oxígeno. Con traje, el límite pasa a ser la radiación y la temperatura. No hay una cifra exacta para un planeta concreto: depende de la atmósfera y de la estrella.' },
+  { cat: 'habitabilidad', title: 'Gravedad en Marte', text: 'En Marte pesarías unas 0,38 veces lo que pesas en la Tierra. Un planeta más grande que la Tierra tendría más gravedad y una atmósfera más difícil de retener.' },
+  { cat: 'habitabilidad', title: 'Kepler-186 f', text: 'Kepler-186 f fue en 2014 el primer planeta del tamaño aproximado de la Tierra descubierto en la zona habitable de otra estrella. Orbita una enana roja.' },
+  { cat: 'curiosidad', title: 'Los siete de TRAPPIST-1', text: 'Los siete planetas de TRAPPIST-1 caben dentro de una órbita más pequeña que la de Mercurio alrededor del Sol.' },
+  { cat: 'curiosidad', title: 'La luz del Sol tarda', text: 'La luz del Sol tarda unos 8 minutos en llegar a la Tierra. Lo que ves del Sol ahora es como era hace 8 minutos.' },
+  { cat: 'curiosidad', title: 'Lagos de metano en Titán', text: 'Titán, luna de Saturno, tiene lagos y ríos de metano y etano líquidos. Su superficie está a unos -179 °C.' },
+  { cat: 'curiosidad', title: 'Un planeta de agua', text: 'K2-18 b tiene unas 2,6 veces el radio de la Tierra. En 2023 se propuso que tiene un océano bajo una atmósfera rica en hidrógeno, aunque esa interpretación sigue en debate.' },
+];
+
+// Mundos donde se sospecha que puede haber vida. Ninguno tiene una confirmación.
+const LIFE_WORLDS = [
+  { name: 'Europa', body: 'Luna de Júpiter', why: 'Bajo su capa de hielo hay un océano de agua líquida. La energía química de ese océano podría sostener microbios.', status: 'Por explorar. Europa Clipper, lanzada en 2024, llegará en 2030.' },
+  { name: 'Encélado', body: 'Luna de Saturno', why: 'Lanza chorros de vapor de agua con sales y moléculas orgánicas. En 2017 la sonda Cassini detectó hidrógeno molecular, que podría alimentar microorganismos.', status: 'Sospecha fuerte por química favorable. Sin confirmación de vida.' },
+  { name: 'Marte', body: 'Planeta', why: 'Tuvo agua líquida en el pasado. El rover Perseverance busca señales de vida antigua en rocas del cráter Jezero.', status: 'En 2024 se reportaron posibles biofirmas en una roca, sin confirmar.' },
+  { name: 'K2-18 b', body: 'Exoplaneta', why: 'Se propuso que tiene océanos y que hay un gas (DMS) asociado a la vida en la Tierra.', status: 'Controvertido. Varios estudios no encontraron ese gas.' },
+  { name: 'Titán', body: 'Luna de Saturno', why: 'Tiene química orgánica compleja y lagos de metano. Una vida así sería muy distinta a la nuestra.', status: 'Hipótesis. No hay evidencia de vida.' },
+];
