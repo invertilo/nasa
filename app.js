@@ -518,7 +518,8 @@ async function loadAPOD(){
       $('apod-body').innerHTML = `<img src="${esc(item.src)}" alt="${esc(item.title)}" loading="lazy">
         <h3>${esc(item.title)}</h3>
         <p class="muted">La imagen del día no está disponible; esta es una imagen de la biblioteca de la NASA.</p>`;
-      setState('apod-status', `Respaldo · ${e.message}`, 'err');
+      // Fallo de la NASA, no de la página: se muestra neutral, sin rojo
+      setState('apod-status', `Imagen de respaldo: la NASA no entregó la imagen del día (${e.message})`);
     } else {
       $('apod-body').innerHTML = '<p class="muted">No se pudo cargar la imagen del día.</p>';
       setState('apod-status', `No disponible (${e.message})`, 'err');
