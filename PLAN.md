@@ -89,3 +89,13 @@ desde cdnjs.
 - Despliegue (requiere tu cuenta de Cloudflare): `wrangler deploy`, con la variable
   `ALLOWED_ORIGIN=https://invertilo.github.io`.
 - Después, en `app.js`: `CONFIG.exoplanetProxy = 'https://TU-WORKER.workers.dev/?url='`.
+
+## Seguridad de la clave de la NASA
+- La clave no está en el código ni en el repositorio. Vive como secreto del Worker
+  (`NASA_API_KEY`); el navegador solo llama a `/nasa/<ruta>` y el Worker agrega la clave.
+- Desplegar: `wrangler secret put NASA_API_KEY` (pega la clave cuando lo pida) y
+  `wrangler deploy`. Para pruebas locales, `worker/.dev.vars` (ignorado por git).
+- En `app.js`: `CONFIG.nasaProxy = 'https://TU-WORKER.workers.dev'`. Sin proxy, la página usa
+  DEMO_KEY (límite bajo, pero sin clave).
+- `.gitignore` excluye `.env`, `.env.*` y `.dev.vars`.
+- Si una clave se expuso en un chat o en un commit, regénerala en api.nasa.gov.

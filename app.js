@@ -1,5 +1,7 @@
 const CONFIG = {
-  nasaKey: 'DEMO_KEY', // Reemplázala por tu clave de https://api.nasa.gov
+  // URL base del Worker que guarda la clave de la NASA (secreto NASA_API_KEY), sin barra final.
+  // Ejemplo: 'https://nasa-cosmos-proxy.TU-USUARIO.workers.dev'. Vacío = clave DEMO_KEY (límite bajo).
+  nasaProxy: '',
   timeoutMs: 10000,
   // El Archivo de Exoplanetas (TAP) hoy no envía cabeceras CORS, así que el navegador bloquea
   // la consulta directa. Si tienes un proxy propio, pon aquí su prefijo (se le agrega la URL
@@ -27,6 +29,14 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 /* ---------- Utilidades ---------- */
+
+// La clave nunca va en el navegador: con proxy la agrega el Worker; sin proxy se usa DEMO_KEY.
+function nasaUrl(path, params = {}){
+  const qs = new URLSearchParams(params);
+  if (CONFIG.nasaProxy) return `${CONFIG.nasaProxy}/nasa/${path}?${qs}`;
+  qs.set('api_key', 'DEMO_KEY');
+  return `https://api.nasa.gov/${path}?${qs}`;
+}
 
 function esc(text){
   return String(text ?? '').replace(/[&<>"']/g, (c) => ({
@@ -462,7 +472,7 @@ async function loadDiscoveries(){
 async function loadNEO(){
   const today = new Date().toISOString().slice(0, 10);
   const d = await fetchJSON(
-    `https://api.nasa.gov/neo/rest/v1/feed?start_date=${today}&end_date=${today}&api_key=${CONFIG.nasaKey}`
+    nasaUrl('neo/rest/v1/feed', { start_date: today, end_date: today })
   );
   const objs = d.near_earth_objects[today] || [];
   const approaches = objs
@@ -493,7 +503,7 @@ async function loadNEO(){
 
 async function loadAPOD(){
   try{
-    const d = await fetchJSON(`https://api.nasa.gov/planetary/apod?api_key=${CONFIG.nasaKey}`);
+    const d = await fetchJSON(nasaUrl('planetary/apod'));
     const media = d.media_type === 'video'
       ? `<p><a href="${esc(d.url)}" target="_blank" rel="noopener">Ver video de hoy</a></p>`
       : `<img src="${esc(d.url)}" alt="${esc(d.title)}" loading="lazy">`;
