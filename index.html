@@ -478,6 +478,17 @@ footer{position:relative;z-index:2;max-width:var(--maxw);margin:64px auto 0;padd
 .footer-card h2{font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px;color:var(--text-2)}
 .sources{display:flex;flex-wrap:wrap;gap:6px 14px;list-style:none;margin:0 0 10px;padding:0}
 
+/* Autor (foto de GitHub en el inicio) */
+.author{
+  display:inline-flex;align-items:center;gap:12px;margin:0 auto 22px;padding:8px 18px 8px 8px;
+  border-radius:99px;text-decoration:none;color:var(--text);
+  transition:transform .3s cubic-bezier(.2,.8,.2,1),border-color .3s;
+}
+.author:hover{transform:translateY(-2px)}
+.author img{width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--line);display:block}
+.author span{display:flex;flex-direction:column;line-height:1.25;text-align:left;font-size:.95rem}
+.author small{color:var(--muted);font-size:.8rem}
+
 /* Datos curiosos y glosario */
 .chip-tag{
   display:inline-block;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;
@@ -567,6 +578,10 @@ footer{position:relative;z-index:2;max-width:var(--maxw);margin:64px auto 0;padd
 
 <main id="contenido">
   <header class="hero" id="inicio">
+    <a class="author glass" href="https://github.com/invertilo" target="_blank" rel="noopener">
+      <img src="https://avatars.githubusercontent.com/u/227039846?v=4" alt="Foto de perfil de Vinicius en GitHub" width="44" height="44" loading="eager">
+      <span>Desarrollado por <strong>Vinicius</strong><small>github.com/invertilo</small></span>
+    </a>
     <p class="eyebrow glass"><span class="live-dot" aria-hidden="true"></span>Datos en tiempo real · NASA · NOAA · ISS</p>
     <h1>Cosmos en vivo</h1>
     <p class="lead">El espacio de hoy en una sola pantalla: la Estación Espacial, el clima del Sol, planetas recién descubiertos y un universo en 3D que puedes tocar.</p>
